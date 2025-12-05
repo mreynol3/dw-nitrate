@@ -7,8 +7,10 @@ library(sf)
 library(dplyr)
 library(RColorBrewer)
 library(readr)
-install.packages('tidygeocoder')
+#install.packages('tidygeocoder')
 library(tidygeocoder)
+install.packages("cdlTools")
+library(cdlTools)
 
 wells <- read_delim("C:/Users/mreyno04/OneDrive - Environmental Protection Agency (EPA)/Profile/REPOS/dw-nitrate/well_logs.txt")
 
@@ -96,6 +98,34 @@ welp_geo <- welp_fil |>
 
 welp_geo <- welp_geo |>
   geocode(address, method = 'osm', lat = latitude, long = longitude)
+
+
+# Iowa?
+
+iowa <- read.csv('iowa-data/SITE_INFO.csv')
+
+iowa <- iowa |>
+  st_as_sf(coords = c("DecLongVa", "DecLatVa"), crs = 4269) 
+
+ggplot(iowa, aes(color = NatAqfrDesc)) +
+  geom_sf(size = 1)
+
+umcr4 <- read.csv('O:/Public/Pennino/HABs/ucmr_4_main.csv')
+pws_inv <- read.csv('O:/Public/Pennino/HABs/PWS_inventory_gwsw_2023Q4.csv')
+
+GU <- umcr4 |>
+  filter(facility_water_type == 'GU')
+
+GU_pws <- pws_inv |>
+  filter(Primary.Source == 'Groundwater under influence of surface water' | Primary.Source == 'Purchased ground water under influence of surface water source')
+
+
+GU <- GU |>
+  mutate(state_abbr = fips(state, to = "Abbreviation")) |>
+  rename(state_fips = state)
+
+
+
 
 
 
