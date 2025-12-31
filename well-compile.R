@@ -12,6 +12,8 @@ library(tidygeocoder)
 install.packages("cdlTools")
 library(cdlTools)
 
+# RET data and wells ===========================================================
+
 wells <- read_delim("C:/Users/mreyno04/OneDrive - Environmental Protection Agency (EPA)/Profile/REPOS/dw-nitrate/well_logs.txt")
 
 welp <- wells |>
@@ -75,6 +77,17 @@ joined <- RET |>
 joined <- joined |>
   relocate(WellID, wl_nbr)
 
+fred_county <- read.csv('RDC_County_History.csv')
+
+fred_or <- fred_county |>
+  separate(col = county_name,
+           into = c("county","state"),
+           sep = ", ",
+           remove = TRUE) |>
+  filter(state == 'or')
+
+
+
 # cyanotoxin contam
 
 source <- read.csv('gwudi_sw.csv')
@@ -100,15 +113,17 @@ welp_geo <- welp_geo |>
   geocode(address, method = 'osm', lat = latitude, long = longitude)
 
 
-# Iowa?
+# # Iowa?
+# 
+# iowa <- read.csv('iowa-data/SITE_INFO.csv')
+# 
+# iowa <- iowa |>
+#   st_as_sf(coords = c("DecLongVa", "DecLatVa"), crs = 4269) 
+# 
+# ggplot(iowa, aes(color = NatAqfrDesc)) +
+#   geom_sf(size = 1)
 
-iowa <- read.csv('iowa-data/SITE_INFO.csv')
-
-iowa <- iowa |>
-  st_as_sf(coords = c("DecLongVa", "DecLatVa"), crs = 4269) 
-
-ggplot(iowa, aes(color = NatAqfrDesc)) +
-  geom_sf(size = 1)
+# cyanotoxin transport =========================================================
 
 umcr4 <- read.csv('O:/Public/Pennino/HABs/ucmr_4_main.csv')
 pws_inv <- read.csv('O:/Public/Pennino/HABs/PWS_inventory_gwsw_2023Q4.csv')
@@ -119,14 +134,32 @@ GU <- umcr4 |>
 GU_pws <- pws_inv |>
   filter(Primary.Source == 'Groundwater under influence of surface water' | Primary.Source == 'Purchased ground water under influence of surface water source')
 
+micx <- umcr4 |>
+  filter(contaminant == 'total microcystin')
 
-GU <- GU |>
-  mutate(state_abbr = fips(state, to = "Abbreviation")) |>
-  rename(state_fips = state)
+micx_gw <- micx |>
+  filter(facility_water_type == "GU")
 
+# GU <- GU |>
+#   mutate(state_abbr = fips(state, to = "Abbreviation")) |>
+#   rename(state_fips = state)
+# 
+pws_huc12 <- read.csv('Facilities_95correct_1HUC12.csv')
 
+overlap_values <- intersect(pws_huc12$PWSID, micx_gw$pws_id)
+print(overlap_values) #There's only 54???? rats!!
 
+micx_gw <- micx_gw |>
+  rename(PWSID = pws_id)
 
+overlap <- inner_join(pws_huc12, micx_gw, by = 'PWSID', relationship = 'many-to-many')
+nhd <- st_read("O:/LAB/COR/Geospatial_Library_Resource/Physical/HYDROLOGY/WBD/WBD_National_GDB.gdb", layer = 'WBDHU12')
 
+overlap_values <- intersect(nhd$huc12, overlap$HUC12) # only 12????? RATS! how did that happen folks
+# There's 54 unique HUC12s in overlap df
+# There's 100,000+ unique HUC12s in nhd df
+
+ov_huc <- unique(overlap$HUC12)
+print(length(intersect(nhd$huc12, ov_huc)))
 
 
