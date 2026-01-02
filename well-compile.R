@@ -12,6 +12,8 @@ library(tidygeocoder)
 install.packages("cdlTools")
 library(cdlTools)
 
+setwd("C:/Users/mreyno04/OneDrive - Environmental Protection Agency (EPA)/Profile/REPOS/dw-nitrate")
+
 # RET data and wells ===========================================================
 
 wells <- read_delim("C:/Users/mreyno04/OneDrive - Environmental Protection Agency (EPA)/Profile/REPOS/dw-nitrate/well_logs.txt")
@@ -125,41 +127,39 @@ welp_geo <- welp_geo |>
 
 # cyanotoxin transport =========================================================
 
-umcr4 <- read.csv('O:/Public/Pennino/HABs/ucmr_4_main.csv')
-pws_inv <- read.csv('O:/Public/Pennino/HABs/PWS_inventory_gwsw_2023Q4.csv')
+# pws_inv <- read.csv('O:/Public/Pennino/HABs/PWS_inventory_gwsw_2023Q4.csv')
+# pws_gw <- pws_inv |>
+#   filter(str_detect(Primary.Source, regex("ground", ignore_case = TRUE)))
 
-GU <- umcr4 |>
-  filter(facility_water_type == 'GU')
+ucmr4 <- read.csv('O:/Public/Pennino/HABs/ucmr_4_main.csv')
+ucmr_gw <- ucmr4 |>
+  filter(facility_water_type == 'GU') |>
+  filter(contaminant == 'total microcystin' | contaminant == 'anatoxin-a' | contaminant == 'cylindrospermopsin')
+# ucrm_gw data frame represents GWUDI systems that have cyanotoxin presence detected
+# must combined with some sort of geographic information 
 
-GU_pws <- pws_inv |>
-  filter(Primary.Source == 'Groundwater under influence of surface water' | Primary.Source == 'Purchased ground water under influence of surface water source')
+# geographic information
+# PWS_FAC_to_HUC12.csv: has duplicates due to facilities for a single PWS being in multiple HUC12s
+pws_huc <- read_csv("PWS_FAC_Locations_to_HUC12_correct.csv", col_types = cols(HUC12 = col_character()))
 
-micx <- umcr4 |>
-  filter(contaminant == 'total microcystin')
+# check how many overlap 
+length(intersect(pws_huc$PWSID, ucmr_gw$PWSID))
 
-micx_gw <- micx |>
-  filter(facility_water_type == "GU")
-
-# GU <- GU |>
-#   mutate(state_abbr = fips(state, to = "Abbreviation")) |>
-#   rename(state_fips = state)
-# 
-pws_huc12 <- read.csv('Facilities_95correct_1HUC12.csv')
-
-overlap_values <- intersect(pws_huc12$PWSID, micx_gw$pws_id)
-print(overlap_values) #There's only 54???? rats!!
-
-micx_gw <- micx_gw |>
-  rename(PWSID = pws_id)
-
-overlap <- inner_join(pws_huc12, micx_gw, by = 'PWSID', relationship = 'many-to-many')
+# join
+geo_cyanotox <- inner_join(pws_huc, ucmr_gw, by = 'PWSID', relationship = 'many-to-many')
+# add geospatial
 nhd <- st_read("O:/LAB/COR/Geospatial_Library_Resource/Physical/HYDROLOGY/WBD/WBD_National_GDB.gdb", layer = 'WBDHU12')
 
-overlap_values <- intersect(nhd$huc12, overlap$HUC12) # only 12????? RATS! how did that happen folks
-# There's 54 unique HUC12s in overlap df
-# There's 100,000+ unique HUC12s in nhd df
+#check overlap 
+length(intersect(nhd$huc12, geo_cyanotox$HUC12))
 
-ov_huc <- unique(overlap$HUC12)
-print(length(intersect(nhd$huc12, ov_huc)))
+nhd <- nhd |>
+  rename(HUC12 = huc12)
+
+# geo_all == ucmr data filtered to cyanotoxins and GWUDI then joined with HUC12 geospatial data using Michael's
+# conversion methods and NHD huc info. Represents 94 PWS systems 
+geo_all <- geo_cyanotox |>
+  inner_join(nhd, by = 'HUC12', relationship = 'many-to-many')
+
 
 
