@@ -16,21 +16,21 @@ setwd("C:/Users/mreyno04/OneDrive - Environmental Protection Agency (EPA)/Profil
 
 # RET data and wells ===========================================================
 
-wells <- read_delim("C:/Users/mreyno04/OneDrive - Environmental Protection Agency (EPA)/Profile/REPOS/dw-nitrate/well_logs.txt")
-
-welp <- wells |>
-  drop_na(latitude, longitude) |>
-  drop_na(use_domestic)
-
-welp <- welp |>
-  st_as_sf(coords = c("longitude", "latitude"), crs = 4269) |>
-  separate(col = complete_date,
-           into = c("Month","Date","Year"),
-           sep = "/",
-           remove = TRUE)
-#  st_transform(crs = 5072)
-
-welp$Year <- as.numeric(welp$Year)
+# wells <- read_delim("C:/Users/mreyno04/OneDrive - Environmental Protection Agency (EPA)/Profile/REPOS/dw-nitrate/well_logs.txt")
+# 
+# welp <- wells |>
+#   drop_na(latitude, longitude) |>
+#   drop_na(use_domestic)
+# 
+# welp <- welp |>
+#   st_as_sf(coords = c("longitude", "latitude"), crs = 4269) |>
+#   separate(col = complete_date,
+#            into = c("Month","Date","Year"),
+#            sep = "/",
+#            remove = TRUE)
+# #  st_transform(crs = 5072)
+# 
+# welp$Year <- as.numeric(welp$Year)
 
 # welp <- welp %>%
 #   mutate(era = factor(case_when(
@@ -50,11 +50,11 @@ welp$Year <- as.numeric(welp$Year)
 #     Year >= 2020 ~ '2020s',
 #   )))
 
-ggplot(welp, aes(color = era)) +
-  geom_sf(size = 0.9)
-
-hist(welp$Year, main = paste("Well Data Per Year"),
-     xlab = "Year")
+# ggplot(welp, aes(color = era)) +
+#   geom_sf(size = 0.9)
+# 
+# hist(welp$Year, main = paste("Well Data Per Year"),
+#      xlab = "Year")
 
 # RET data
 
@@ -66,64 +66,43 @@ RET <- RET |>
   filter((WellLongitude < (-100))  & (WellLatitude > 41.9)) |>
   st_as_sf(coords = c("WellLongitude", "WellLatitude"), crs = 4269) 
 
+RET_summary <- as.data.frame(table(RET$Year))
 
-ggplot(RET, aes(color = WellCounty)) +
-  geom_sf(size = 1)
+RET_summary <- RET_summary |>
+  rename(year = Var1,
+         RET_total = Freq)
 
-joined <- RET |>
-  st_drop_geometry() |>
-  rename(wl_nbr = WellID) |>
-  mutate(wl_nbr = as.numeric(wl_nbr)) |>
-  left_join(welp, by = 'wl_nbr')
-
-joined <- joined |>
-  relocate(WellID, wl_nbr)
-
-fred_county <- read.csv('RDC_County_History.csv')
-
-fred_or <- fred_county |>
-  separate(col = county_name,
-           into = c("county","state"),
-           sep = ", ",
-           remove = TRUE) |>
-  filter(state == 'or')
-
-
-
-# cyanotoxin contam
-
-source <- read.csv('gwudi_sw.csv')
-
-source_geo <- source_all |>
-  geocode(address, method = 'osm', lat = latitude, long = longitude)
-
-source_geo <- source_geo |>
-  drop_na(latitude, longitude) |>
-  st_as_sf(coords = c("longitude", "latitude"), crs = 4269) 
-  
-ggplot(source_geo, aes(color = Primary.Source)) +
-  geom_sf(size = 1)
-
-
-welp_fil <- welp |>
-  drop_na(street, city, zip, state)
-
-welp_geo <- welp_fil |>
-  unite(col = 'address', street, city, state, zip, sep = ', ')
-
-welp_geo <- welp_geo |>
-  geocode(address, method = 'osm', lat = latitude, long = longitude)
-
-
-# # Iowa?
-# 
-# iowa <- read.csv('iowa-data/SITE_INFO.csv')
-# 
-# iowa <- iowa |>
-#   st_as_sf(coords = c("DecLongVa", "DecLatVa"), crs = 4269) 
-# 
-# ggplot(iowa, aes(color = NatAqfrDesc)) +
+# ggplot(RET, aes(color = WellCounty)) +
 #   geom_sf(size = 1)
+
+pending_all <- read.csv("PENDLISOR.csv") # data : https://fred.stlouisfed.org/series/PENLISCOUOR
+
+pending_yr <- pending_all |>
+  separate(col = observation_date,
+           into = c("year","month","date"),
+           sep = "-",
+           remove = TRUE) |>
+  rename(pending = PENLISCOUOR)
+
+pend_summary <- pending_yr |>
+  group_by(year) |>
+  summarize(pending_total = sum(pending))
+
+comp_all <- RET_summary |>
+  left_join(pend_summary, by = 'year') |>
+  mutate(estim_sold = pending_total * 0.95, # source : https://www.homelight.com/blog/how-often-do-pending-offers-fall-through/#:~:text=According%20to%20data%20compiled%20by,sales%20fell%20through%20in%202023.
+         perc = round(RET_total / estim_sold, digits = 4))
+
+# oregon domestic well data 
+
+domes_well <- read.csv('Block_Groups.csv')
+
+domes_well <- domes_well |>
+  mutate(Wells.2020 = as.numeric(Wells.2020)) |>
+  drop_na(Wells.2020)
+
+total_domes <- domes_well |>
+  summarise(sum = sum(Wells.2020))
 
 # cyanotoxin transport =========================================================
 
@@ -156,10 +135,35 @@ length(intersect(nhd$huc12, geo_cyanotox$HUC12))
 nhd <- nhd |>
   rename(HUC12 = huc12)
 
-# geo_all == ucmr data filtered to cyanotoxins and GWUDI then joined with HUC12 geospatial data using Michael's
+# geo_all == ucmr data filtered to cyanotoxins and GWUDI then joined with HUC12 geospatial data using Micheal's
 # conversion methods and NHD huc info. Represents 94 PWS systems 
 geo_all <- geo_cyanotox |>
   inner_join(nhd, by = 'HUC12', relationship = 'many-to-many')
+
+# # cyanotoxin contam
+# 
+# source <- read.csv('gwudi_sw.csv')
+# 
+# source_geo <- source_all |>
+#   geocode(address, method = 'osm', lat = latitude, long = longitude)
+# 
+# source_geo <- source_geo |>
+#   drop_na(latitude, longitude) |>
+#   st_as_sf(coords = c("longitude", "latitude"), crs = 4269) 
+#   
+# ggplot(source_geo, aes(color = Primary.Source)) +
+#   geom_sf(size = 1)
+# 
+# 
+# welp_fil <- welp |>
+#   drop_na(street, city, zip, state)
+# 
+# welp_geo <- welp_fil |>
+#   unite(col = 'address', street, city, state, zip, sep = ', ')
+# 
+# welp_geo <- welp_geo |>
+#   geocode(address, method = 'osm', lat = latitude, long = longitude)
+
 
 
 
