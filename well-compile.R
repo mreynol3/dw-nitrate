@@ -93,16 +93,46 @@ comp_all <- RET_summary |>
   mutate(estim_sold = pending_total * 0.95, # source : https://www.homelight.com/blog/how-often-do-pending-offers-fall-through/#:~:text=According%20to%20data%20compiled%20by,sales%20fell%20through%20in%202023.
          perc = round(RET_total / estim_sold, digits = 4))
 
+# county level pending data, should be 36 counties in Oregon
+
+rdc_county <- read_csv('RDC_Inventory_Core_Metrics_County_History.csv')
+
+rdc_county <- rdc_county |>
+  separate(col = county_name,
+           into = c("county", "state"),
+           sep = ", ",
+           remove = TRUE) |>
+  filter(state == 'or')
+
+
 # oregon domestic well data 
 
 domes_well <- read.csv('Block_Groups.csv')
 
+# select county identifier from GEOID / block group
 domes_well <- domes_well |>
-  mutate(Wells.2020 = as.numeric(Wells.2020)) |>
-  drop_na(Wells.2020)
+  mutate(county_fips = str_sub(as.character(GEOID), 1 , 5),
+         wells_2020_num = as.numeric(Wells.2020),
+         wells_1990_num = as.numeric(X1990.Wells)) |>
+  relocate(county_fips, wells_2020_num, wells_1990_num) |>
+  drop_na(wells_2020_num, wells_1990_num)
 
-total_domes <- domes_well |>
-  summarise(sum = sum(Wells.2020))
+# summarize to determine number of wells in county
+well_county <- domes_well |>
+  group_by(county_fips) |>
+  summarise(wells.2020 = sum(wells_2020_num),
+            wells.1990 = sum(wells_1990_num))
+
+rdc_mini <- rdc_county |>
+  select(month_date_yyyymm, county_fips, county, 
+         active_listing_count, pending_listing_count, total_listing_count,
+         quality_flag) |>
+  filter(str_detect(month_date_yyyymm, regex("2020", ignore_case = TRUE))) |>
+  group_by(county_fips) |>
+  summarise(active_listing = sum(active_listing_count),
+            pending_listing = sum(pending_listing_count),
+            total_listing = sum(total_listing_count)) |>
+  left_join(well_county, by = 'county_fips')
 
 # cyanotoxin transport =========================================================
 
