@@ -31,6 +31,9 @@ setwd("C:/Users/mreyno04/OneDrive - Environmental Protection Agency (EPA)/Profil
 # #  st_transform(crs = 5072)
 # 
 # welp$Year <- as.numeric(welp$Year)
+# 
+# welp_2020 <- welp |>
+#   filter(Year =='2020')
 
 # welp <- welp %>%
 #   mutate(era = factor(case_when(
@@ -62,36 +65,50 @@ RET <- read_csv("RET-excel.csv")
 
 RET <- RET |>
   drop_na(WellLongitude, WellLatitude) |>
-  #filter(WellLongitude != 0  & WellLatitude != 0) |>
   filter((WellLongitude < (-100))  & (WellLatitude > 41.9)) |>
   st_as_sf(coords = c("WellLongitude", "WellLatitude"), crs = 4269) 
 
-RET_summary <- as.data.frame(table(RET$Year))
+# RET_summary <- as.data.frame(table(RET$Year))
+# 
+# RET_summary <- RET_summary |>
+#   rename(year = Var1,
+#          RET_total = Freq)
 
-RET_summary <- RET_summary |>
-  rename(year = Var1,
-         RET_total = Freq)
+RET_county <- RET |>
+  group_by(WellCounty, Year) |>
+  summarize(count = n())
+
+RET_county <- RET_county |>
+  st_drop_geometry() |>
+  pivot_wider(id_cols = WellCounty,
+              names_from = Year,
+              values_from = count,
+              values_fill = 0)
+
+RET_county <- RET_county |>
+  rename_with(~ paste0("RET_", .), -WellCounty)
+  
 
 # ggplot(RET, aes(color = WellCounty)) +
 #   geom_sf(size = 1)
 
-pending_all <- read.csv("PENDLISOR.csv") # data : https://fred.stlouisfed.org/series/PENLISCOUOR
-
-pending_yr <- pending_all |>
-  separate(col = observation_date,
-           into = c("year","month","date"),
-           sep = "-",
-           remove = TRUE) |>
-  rename(pending = PENLISCOUOR)
-
-pend_summary <- pending_yr |>
-  group_by(year) |>
-  summarize(pending_total = sum(pending))
-
-comp_all <- RET_summary |>
-  left_join(pend_summary, by = 'year') |>
-  mutate(estim_sold = pending_total * 0.95, # source : https://www.homelight.com/blog/how-often-do-pending-offers-fall-through/#:~:text=According%20to%20data%20compiled%20by,sales%20fell%20through%20in%202023.
-         perc = round(RET_total / estim_sold, digits = 4))
+# pending_all <- read.csv("PENDLISOR.csv") # data : https://fred.stlouisfed.org/series/PENLISCOUOR
+# 
+# pending_yr <- pending_all |>
+#   separate(col = observation_date,
+#            into = c("year","month","date"),
+#            sep = "-",
+#            remove = TRUE) |>
+#   rename(pending = PENLISCOUOR)
+# 
+# pend_summary <- pending_yr |>
+#   group_by(year) |>
+#   summarize(pending_total = sum(pending))
+# 
+# comp_all <- RET_summary |>
+#   left_join(pend_summary, by = 'year') |>
+#   mutate(estim_sold = pending_total * 0.95, # source : https://www.homelight.com/blog/how-often-do-pending-offers-fall-through/#:~:text=According%20to%20data%20compiled%20by,sales%20fell%20through%20in%202023.
+#          perc = round(RET_total / estim_sold, digits = 4))
 
 # county level pending data, should be 36 counties in Oregon
 
@@ -104,8 +121,20 @@ rdc_county <- rdc_county |>
            remove = TRUE) |>
   filter(state == 'or')
 
+# oregon county fips to names 
 
-# oregon domestic well data 
+fips_to_name <- read_csv('fips_to_name.csv')
+
+fips_to_name <- fips_to_name |>
+  filter(`FIPS State and County Codes` > 40000) |>
+  separate(col = `Geographic area name`,
+           into = c("county", "name"),
+           sep = " ",
+           remove = TRUE) |>
+  rename(county_fips = `FIPS State and County Codes`) |>
+  select(c(county_fips, county))
+
+# oregon domestic well data, Andrew Murray
 
 domes_well <- read.csv('Block_Groups.csv')
 
@@ -115,24 +144,50 @@ domes_well <- domes_well |>
          wells_2020_num = as.numeric(Wells.2020),
          wells_1990_num = as.numeric(X1990.Wells)) |>
   relocate(county_fips, wells_2020_num, wells_1990_num) |>
-  drop_na(wells_2020_num, wells_1990_num)
+  drop_na(wells_2020_num, wells_1990_num) 
+  
 
 # summarize to determine number of wells in county
 well_county <- domes_well |>
   group_by(county_fips) |>
-  summarise(wells.2020 = sum(wells_2020_num),
-            wells.1990 = sum(wells_1990_num))
+  summarise(AM_wells.2020 = sum(wells_2020_num),
+            AM_wells.1990 = sum(wells_1990_num)) 
 
 rdc_mini <- rdc_county |>
   select(month_date_yyyymm, county_fips, county, 
          active_listing_count, pending_listing_count, total_listing_count,
          quality_flag) |>
-  filter(str_detect(month_date_yyyymm, regex("2020", ignore_case = TRUE))) |>
-  group_by(county_fips) |>
+  mutate(year = str_sub(as.character(month_date_yyyymm), 1 , 4))|>
+  relocate(year) |>
+  select(-month_date_yyyymm)
+
+rdc_mini <- rdc_mini |>
+  group_by(county_fips, year) |>
   summarise(active_listing = sum(active_listing_count),
             pending_listing = sum(pending_listing_count),
             total_listing = sum(total_listing_count)) |>
+  pivot_wider(id_cols = county_fips,
+              names_from = year,
+              values_from = c(active_listing, pending_listing, total_listing),
+              values_fill = 0)
+
+rdc_mini <- rdc_mini |>
   left_join(well_county, by = 'county_fips')
+
+# join to fips to name
+
+rdc_mini <- fips_to_name |>
+  mutate(county_fips = as.character(county_fips)) |>
+  left_join(rdc_mini, by = 'county_fips')
+
+# add ret data
+
+RET_county <- RET_county |>
+  rename(county = WellCounty)
+
+county_all <- RET_county |>
+  left_join(rdc_mini, by = 'county') |>
+  relocate(county_fips)
 
 # cyanotoxin transport =========================================================
 
