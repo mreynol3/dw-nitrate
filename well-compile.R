@@ -129,7 +129,7 @@ fips_to_name <- fips_to_name |>
   filter(`FIPS State and County Codes` > 40000) |>
   separate(col = `Geographic area name`,
            into = c("county", "name"),
-           sep = " ",
+           sep = " County",
            remove = TRUE) |>
   rename(county_fips = `FIPS State and County Codes`) |>
   select(c(county_fips, county))
@@ -189,6 +189,9 @@ county_all <- RET_county |>
   left_join(rdc_mini, by = 'county') |>
   relocate(county_fips)
 
+county_all <- county_all |>
+  drop_na(county)
+
 # cyanotoxin transport =========================================================
 
 # pws_inv <- read.csv('O:/Public/Pennino/HABs/PWS_inventory_gwsw_2023Q4.csv')
@@ -198,7 +201,8 @@ county_all <- RET_county |>
 ucmr4 <- read.csv('O:/Public/Pennino/HABs/ucmr_4_main.csv')
 ucmr_gw <- ucmr4 |>
   filter(facility_water_type == 'GU') |>
-  filter(contaminant == 'total microcystin' | contaminant == 'anatoxin-a' | contaminant == 'cylindrospermopsin')
+  filter(contaminant == 'total microcystin' | contaminant == 'anatoxin-a' | contaminant == 'cylindrospermopsin') |>
+  rename(PWSID = pws_id)
 # ucrm_gw data frame represents GWUDI systems that have cyanotoxin presence detected
 # must combined with some sort of geographic information 
 
@@ -222,8 +226,28 @@ nhd <- nhd |>
 
 # geo_all == ucmr data filtered to cyanotoxins and GWUDI then joined with HUC12 geospatial data using Micheal's
 # conversion methods and NHD huc info. Represents 94 PWS systems 
-geo_all <- geo_cyanotox |>
-  inner_join(nhd, by = 'HUC12', relationship = 'many-to-many')
+geo_all <- nhd |>
+  inner_join(geo_cyanotox, by = 'HUC12', relationship = 'many-to-many')
+
+states <- tigris::states(cb = TRUE, progress_bar = FALSE)  %>%
+  filter(!STUSPS %in% c('HI', 'PR', 'AK', 'MP', 'GU', 'AS', 'VI'))  %>%
+  st_transform(crs = 5072)
+
+geo_all <- geo_all |>
+  st_transform(crs = 5072)
+
+ggplot() +
+  #geom_sf(data = geo_all, fill = NA) + 
+  #geom_sf(data = states, fill = NA, color = "black", lwd = 0.1) +
+  #geom_sf(data = geo_combo)
+  
+ggplot(geo_combo, aes(color = pred_cyano_fit)) +
+  geom_sf()
+
+geo_combo <- st_filter(PredData, geo_all, .predicate = st_within)
+is_within <- as.vector(geo_combo)
+
+length(PredData[is_within, ])
 
 # # cyanotoxin contam
 # 
