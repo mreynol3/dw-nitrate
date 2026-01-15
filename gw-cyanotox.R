@@ -1,8 +1,28 @@
 # cyanotoxin transport =========================================================
 
+library(tidyverse)
+library(ggplot2)
+library(sf)
+library(dplyr)
+library(RColorBrewer)
+library(readr)
+#install.packages('tidygeocoder')
+library(tidygeocoder)
+install.packages("cdlTools")
+library(cdlTools)
+library(janitor)
+
+setwd("C:/Users/mreyno04/OneDrive - Environmental Protection Agency (EPA)/Profile/REPOS/dw-nitrate/gw-cyanotox")
+
+# compilation ------------------------------------------------------------------
+
 # pws_inv <- read.csv('O:/Public/Pennino/HABs/PWS_inventory_gwsw_2023Q4.csv')
 # pws_gw <- pws_inv |>
 #   filter(str_detect(Primary.Source, regex("ground", ignore_case = TRUE)))
+
+# community water system data? 
+
+
 
 ucmr4 <- read.csv('O:/Public/Pennino/HABs/ucmr_4_main.csv')
 ucmr_cyano <- ucmr4 |>
@@ -125,8 +145,7 @@ ggplot(co_all, aes(color = SDWAComplianceStatus)) +
   geom_sf(data = states, fill = NA, color = 'black')
 
 
-
-# Compile Comiple ==============================================================
+# state compilation ============================================================
 
 # If I want to compile all these PWS types I might have to pull from 
 # SDWIS / individual states 
@@ -134,8 +153,7 @@ ggplot(co_all, aes(color = SDWAComplianceStatus)) +
 # Loading and cleaning data
 
 nhd_clean <- nhd |>
-  select(huc12, tohuc, shape_Area, shape, states) |>
-  rename(HUC12 = huc12)
+  select(HUC12, tohuc, shape_Area, shape, states) 
 
 water_watch <- read_csv('state_data/waterwatch-gwudi.csv')
 water_watch <- water_watch |>

@@ -13,22 +13,22 @@ install.packages("cdlTools")
 library(cdlTools)
 library(janitor)
 
-setwd("C:/Users/mreyno04/OneDrive - Environmental Protection Agency (EPA)/Profile/REPOS/dw-nitrate")
+setwd("C:/Users/mreyno04/OneDrive - Environmental Protection Agency (EPA)/Profile/REPOS/dw-nitrate/RET")
 
 # RET data and wells ===========================================================
 
-# wells <- read_delim("C:/Users/mreyno04/OneDrive - Environmental Protection Agency (EPA)/Profile/REPOS/dw-nitrate/well_logs.txt")
+wells <- read_delim("C:/Users/mreyno04/OneDrive - Environmental Protection Agency (EPA)/Profile/REPOS/dw-nitrate/well_logs.txt")
 # 
-# welp <- wells |>
-#   drop_na(use_domestic)
-# 
-# welp <- welp |>
-#   st_as_sf(coords = c("longitude", "latitude"), crs = 4269) |>
-#   separate(col = complete_date,
-#            into = c("Month","Date","Year"),
-#            sep = "/",
-#            remove = TRUE)
-# #  st_transform(crs = 5072)
+welp <- wells |>
+  drop_na(use_domestic)
+
+welp <- welp |>
+  st_as_sf(coords = c("longitude", "latitude"), crs = 4269) |>
+  separate(col = complete_date,
+           into = c("Month","Date","Year"),
+           sep = "/",
+           remove = TRUE)
+#  st_transform(crs = 5072)
 # 
 # welp$Year <- as.numeric(welp$Year)
 # 
