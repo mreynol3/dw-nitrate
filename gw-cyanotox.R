@@ -11,6 +11,7 @@ library(tidygeocoder)
 install.packages("cdlTools")
 library(cdlTools)
 library(janitor)
+library(StreamCatTools)
 
 setwd("C:/Users/mreyno04/OneDrive - Environmental Protection Agency (EPA)/Profile/REPOS/dw-nitrate/gw-cyanotox")
 
@@ -132,17 +133,17 @@ states <- tigris::states(cb = TRUE, progress_bar = FALSE)  %>%
 
 # glimpse the echo data
 
-echo_co <- read_csv('ECHO_CO.csv') |>
-  rename(PWSID = SDWAIDs)
-
-co_all <- echo_co |>
-  left_join(CO, by = 'PWSID') |>
-  st_as_sf(coords = c("FacLong", "FacLat"), crs = 4326) |>
-  st_transform(crs = 5072)
-
-ggplot(co_all, aes(color = SDWAComplianceStatus)) +
-  geom_sf() +
-  geom_sf(data = states, fill = NA, color = 'black')
+# echo_co <- read_csv('ECHO_CO.csv') |>
+#   rename(PWSID = SDWAIDs)
+# 
+# co_all <- echo_co |>
+#   left_join(CO, by = 'PWSID') |>
+#   st_as_sf(coords = c("FacLong", "FacLat"), crs = 4326) |>
+#   st_transform(crs = 5072)
+# 
+# ggplot(co_all, aes(color = SDWAComplianceStatus)) +
+#   geom_sf() +
+#   geom_sf(data = states, fill = NA, color = 'black')
 
 
 # state compilation ============================================================
@@ -290,41 +291,80 @@ ggplot(all, aes(color = cyano)) +
   geom_sf(data = states, fill = NA, color = 'black')
 
 
-SDWIS_GU <- readxl::read_excel('state_data/SDWIS_GU.xlsx')
-GDWIS_GUP <- readxl::read_excel('state_data/SDWIS_GUP.xlsx')
+# SDWIS_GU <- readxl::read_excel('state_data/SDWIS_GU.xlsx')
+# GDWIS_GUP <- readxl::read_excel('state_data/SDWIS_GUP.xlsx')
+# 
+# SDWIS <- bind_rows(SDWIS_GU, GDWIS_GUP) |>
+#   mutate(state = substr(PWSID, 1, 2))
+# 
+# SDWISmini <- SDWIS |>
+#   rename(Type = `PWS Type`,
+#          County = `Counties Served`) |>
+#   select(PWSID, PWS_name, Type, County)
+# 
+# df <- bind_rows(gwudi_all, SDWISmini) |>
+#   distinct()
+# 
+# df <- df |>
+#   inner_join(pws_huc, by = 'PWSID',relationship = "many-to-many") |>
+#   drop_na(PWSID)
+# 
+# df <- df |>
+#   inner_join(nhd, by = 'HUC12', relationship = 'many-to-many')
+# 
+# 
+# length(unique(SDWIS$PWSID))
+# # 1124
+# length(unique(gwudi_all$PWSID))
+# # 1142
+# length(intersect(SDWIS$PWSID, gwudi_all$PWSID))
+# # 650
+# length(setdiff(SDWIS$PWSID, gwudi_all$PWSID))
+# # 474
+# length(setdiff(gwudi_all$PWSID, SDWIS$PWSID))
+# # 492
+# # there's 1616 unique PWSID that are GWUDI 
+# 
+# length(symdiff(gwudi_all$PWSID, SDWIS$PWSID))
+# 
+# list_pws <- symdiff(gwudi_all$PWSID, SDWIS$PWSID)
+# list_pws2 <- intersect(SDWIS$PWSID, gwudi_all$PWSID)
 
-SDWIS <- bind_rows(SDWIS_GU, GDWIS_GUP) |>
-  mutate(state = substr(PWSID, 1, 2))
+# census block data for PWS ====================================================
 
-SDWISmini <- SDWIS |>
-  rename(Type = `PWS Type`,
-         County = `Counties Served`) |>
-  select(PWSID, PWS_name, Type, County)
+census_blocks <- read_csv('CWS_Boundaries_Latest/Census_Tables/Blocks_V_2_1.csv')
 
-df <- bind_rows(gwudi_all, SDWISmini) |>
-  distinct()
-
-df <- df |>
-  inner_join(pws_huc, by = 'PWSID',relationship = "many-to-many") |>
-  drop_na(PWSID)
-
-df <- df |>
-  inner_join(nhd, by = 'HUC12', relationship = 'many-to-many')
+or_blocks <- census_blocks |>
+  mutate(state = substr(PWSID, 1, 2)) |>
+  filter(state == 'OR')
 
 
-length(unique(SDWIS$PWSID))
-# 1124
-length(unique(gwudi_all$PWSID))
-# 1142
-length(intersect(SDWIS$PWSID, gwudi_all$PWSID))
-# 650
-length(setdiff(SDWIS$PWSID, gwudi_all$PWSID))
-# 474
-length(setdiff(gwudi_all$PWSID, SDWIS$PWSID))
-# 492
-# there's 1616 unique PWSID that are GWUDI 
 
-length(symdiff(gwudi_all$PWSID, SDWIS$PWSID))
+# watershed level data 
 
-list_pws <- symdiff(gwudi_all$PWSID, SDWIS$PWSID)
-list_pws2 <- intersect(SDWIS$PWSID, gwudi_all$PWSID)
+crosswalk <- foreign::read.dbf('O:/LAB/COR/Geospatial_Library_Resource/Physical/HYDROLOGY/NHDPlusV21/NHDPlusNationalData/NHDPlusV1Network_V2Network_Crosswalk.dbf')
+
+get_nlcd <- function(coms){
+  sc_get_data(metric = 'PctWdWet2016, PctUrbMd2016, PctUrbLo2016, PctUrbHi2016,
+                          PctMxFst2016, PctCrop2016, PctHay2016, PctDecid2016,
+                          PctConif2016, PctUrbOp2016, PctHbWet2016',
+              aoi='watershed',
+              comid = coms,
+              showAreaSqKm = TRUE)
+}
+
+chunks <- split(PredData$COMID, ceiling(seq_along(PredData$COMID) / 10000))
+
+ncldMas <- do.call(rbind, lapply(chunks, get_nlcd))
+
+# ncldMas <- ncldMas |>
+#   dplyr::select(-WSAREASQKM)
+
+ncldMas <- ncldMas |>
+  mutate(agr_ws = PCTCROP2016WS + PCTHAY2016WS,
+         dev_ws = PCTURBLO2016WS + PCTURBMD2016WS + PCTURBOP2016WS + PCTURBHI2016WS,
+         fst_ws = PCTMXFST2016WS + PCTDECID2016WS + PCTCONIF2016WS,
+         wet_ws = PCTWDWET2016WS + PCTHBWET2016WS,
+         COMID = COMID,
+         .keep = 'unused')
+

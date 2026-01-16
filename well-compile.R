@@ -12,22 +12,23 @@ library(tidygeocoder)
 install.packages("cdlTools")
 library(cdlTools)
 library(janitor)
+library(here)
 
 setwd("C:/Users/mreyno04/OneDrive - Environmental Protection Agency (EPA)/Profile/REPOS/dw-nitrate/RET")
 
 # RET data and wells ===========================================================
 
-wells <- read_delim("C:/Users/mreyno04/OneDrive - Environmental Protection Agency (EPA)/Profile/REPOS/dw-nitrate/well_logs.txt")
+# wells <- read_delim("C:/Users/mreyno04/OneDrive - Environmental Protection Agency (EPA)/Profile/REPOS/dw-nitrate/well_logs.txt")
+# # 
+# welp <- wells |>
+#   drop_na(use_domestic)
 # 
-welp <- wells |>
-  drop_na(use_domestic)
-
-welp <- welp |>
-  st_as_sf(coords = c("longitude", "latitude"), crs = 4269) |>
-  separate(col = complete_date,
-           into = c("Month","Date","Year"),
-           sep = "/",
-           remove = TRUE)
+# welp <- welp |>
+#   st_as_sf(coords = c("longitude", "latitude"), crs = 4269) |>
+#   separate(col = complete_date,
+#            into = c("Month","Date","Year"),
+#            sep = "/",
+#            remove = TRUE)
 #  st_transform(crs = 5072)
 # 
 # welp$Year <- as.numeric(welp$Year)
@@ -222,4 +223,100 @@ housing <- housing_2010 |>
 county_all <- county_all |>
   left_join(housing, by = 'county') |>
   select(!(contains('active')))
+
+# parcel data ==================================================================
+
+census_blocks <- read_csv('CWS_Boundaries_Latest/Census_Tables/Blocks_V_2_1.csv')
+
+census_blocks <- census_blocks |>
+  mutate(state = substr(PWSID, 1, 2))
+
+or_blocks <- census_blocks |>
+  filter(state == 'OR')
+
+# reset wd for the next couple lines
+setwd("C:/Users/mreyno04/OneDrive - Environmental Protection Agency (EPA)/Profile/REPOS/dw-nitrate/RET/Extract_Regrid/Extract_Regrid/")
+
+# Load Regrid County File Paths
+paths <- read_csv(here("Data/file_links.csv"))%>%
+  filter(state == "OR")
+
+# Create temporary folder to download spatial data to
+temp.path <- here("Oregon_Temp")
+dir.create(temp.path, showWarnings = FALSE)
+
+# Load CWS Blocks (Download here: https://github.com/USEPA/ORD_SAB_Model/tree/main/Version_History/2_1/Census_Tables)
+cws_blocks <- read_csv(here("Data/Blocks_V_2_1.csv"))
+
+# Failed data frame to catch anything that fails
+failed <- data.frame()
+
+# Iterate over the county files
+for(n in 1:nrow(paths)){
+  # Download Zip File
+  dir.create(paste0(temp.path,"/zip"), showWarnings = FALSE)
+  download.file(paths$link[n], paste0(temp.path,"/zip/temp.gdb.zip"), method = "curl", quiet = TRUE, mode = "w",
+                cacheOK = TRUE,
+                extra = getOption("download.file.extra"),
+                headers = NULL)
+  
+  tryCatch({
+    # Unzip
+    dir.create(paste0(temp.path,"/unzip.gdb"), showWarnings = FALSE)
+    zipF <- paste0(temp.path,"/zip/temp.gdb.zip")
+    outDir <- paste0(temp.path,"/unzip.gdb")
+    unzip(zipF, exdir = outDir)
+    
+    # Load data
+    sf <- st_read(paste0(temp.path,"/unzip.gdb", "/", tolower(paths$state[n]), "_", tolower(paths$county[n]), ".gdb"), quiet = TRUE) %>%
+      st_transform(st_crs(5070)) %>%
+      st_make_valid()
+    
+    # Save spatial file
+    #st_write(sf, here("County_Parcels.gpkg"), layer = paste0(paths$county[n],"_",paths$state[n]))
+    
+    
+    
+    
+    # Drop Geometry and filter to data
+    ## !! Keep in mind that different counties can have different data columns. Only some columns are nationally consistent. !!
+    df <- sf%>%
+      st_drop_geometry()%>%
+      # Filter out CWS Census Blocks
+      filter(!census_block %in% cws_blocks$GEOID20)%>%
+      # Select relevant columns (Double check these)
+      select(census_block,lbcs_activity,lbcs_activity_desc,lbcs_function,lbcs_function_desc,lbcs_structure,lbcs_structure_desc,
+             lbcs_site,lbcs_site_desc,lbcs_ownership,lbcs_ownership_desc,ll_bldg_count,saledate,saleprice)
+    
+    # Save text file
+    write_csv(df, paste0(here("Data/County_Tables"),"/",paths$county[n],"_",paths$state[n],".csv"))
+    
+    # Delete temporary files
+    unlink(paste0(temp.path,"/zip"), recursive = TRUE)
+    unlink(paste0(temp.path,"/unzip.gdb"), recursive = TRUE)
+    
+    #setTxtProgressBar(pb, n)
+    print(paste0("Completed ",paths$NAME[n]," (",paths$GEOID[n],") at: ",round(Sys.time())))
+  }, error = function(e) {
+    # Append failed county to the 'failed' data frame
+    failed <- rbind(failed, paths[n, ])
+    message(paste("Error processing county:", paths$county[n], "in state:", st, "-", e$message))
+  })
+  
+  
+}
+
+unlink(temp.path, recursive = TRUE)
+
+print(paste0("Completed ", st, " at: ", round(Sys.time())))
+
+
+# Display failed counties
+print("Failed counties:")
+print(failed)
+
+# Save failed counties
+if(nrow(failed)>0){
+  write_csv(failed,here("failed.csv"),delim = ",")
+}
 
