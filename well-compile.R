@@ -9,7 +9,7 @@ library(RColorBrewer)
 library(readr)
 #install.packages('tidygeocoder')
 library(tidygeocoder)
-install.packages("cdlTools")
+#install.packages("cdlTools")
 library(cdlTools)
 library(janitor)
 library(here)
@@ -137,92 +137,93 @@ fips_to_name <- fips_to_name |>
 
 # oregon domestic well data, Andrew Murray
 
-domes_well <- read.csv('Block_Groups.csv')
+#domes_well <- read.csv('Block_Groups.csv')
+domes_well <- read.csv('Blocks.csv')
 
 # select county identifier from GEOID / block group
 domes_well <- domes_well |>
   mutate(county_fips = str_sub(as.character(GEOID), 1 , 5),
          wells_2020_num = as.numeric(Wells.2020),
          wells_1990_num = as.numeric(X1990.Wells)) |>
-  relocate(county_fips, wells_2020_num, wells_1990_num) |>
-  drop_na(wells_2020_num, wells_1990_num) 
+  relocate(GEOID, county_fips, wells_2020_num, wells_1990_num) |>
+  drop_na(wells_2020_num, wells_1990_num) |> 
+  rename(census_block = GEOID)
   
-
 # summarize to determine number of wells in county
-well_county <- domes_well |>
-  group_by(county_fips) |>
-  summarise(AM_wells.2020 = sum(wells_2020_num),
-            AM_wells.1990 = sum(wells_1990_num)) 
+# well_county <- domes_well |>
+#   group_by(county_fips) |>
+#   summarise(AM_wells.2020 = sum(wells_2020_num),
+#             AM_wells.1990 = sum(wells_1990_num)) 
 
-rdc_mini <- rdc_county |>
-  select(month_date_yyyymm, county_fips, county, pending_listing_count,
-         active_listing_count, quality_flag) |>
-  mutate(year = str_sub(as.character(month_date_yyyymm),1,4))|>
-  relocate(year) |>
-  select(-month_date_yyyymm)
-
-rdc_mini <- rdc_mini |>
-  group_by(county_fips, year) |>
-  summarise(pending_listing = sum(pending_listing_count),
-            active_listing = sum(active_listing_count)) |>
-  pivot_wider(id_cols = county_fips,
-              names_from = year,
-              values_from = c(pending_listing, active_listing),
-              values_fill = 0) |>
-  mutate(across(everything(), ~replace_na(.x, 0)))
-
-rdc_mini <- rdc_mini |>
-  left_join(well_county, by = 'county_fips')
-
-# join to fips to name
-
-rdc_mini <- fips_to_name |>
-  mutate(county_fips = as.character(county_fips)) |>
-  left_join(rdc_mini, by = 'county_fips')
+# rdc_mini <- rdc_county |>
+#   select(month_date_yyyymm, county_fips, county, pending_listing_count,
+#          active_listing_count, quality_flag) |>
+#   mutate(year = str_sub(as.character(month_date_yyyymm),1,4))|>
+#   relocate(year) |>
+#   select(-month_date_yyyymm)
+# 
+# rdc_mini <- rdc_mini |>
+#   group_by(county_fips, year) |>
+#   summarise(pending_listing = sum(pending_listing_count),
+#             active_listing = sum(active_listing_count)) |>
+#   pivot_wider(id_cols = county_fips,
+#               names_from = year,
+#               values_from = c(pending_listing, active_listing),
+#               values_fill = 0) |>
+#   mutate(across(everything(), ~replace_na(.x, 0)))
+# 
+# rdc_mini <- rdc_mini |>
+#   left_join(well_county, by = 'county_fips')
+# 
+# # join to fips to name
+# 
+# rdc_mini <- fips_to_name |>
+#   mutate(county_fips = as.character(county_fips)) |>
+#   left_join(rdc_mini, by = 'county_fips')
 
 # add ret data
 
-RET_county <- RET_county |>
-  rename(county = WellCounty)
-
-county_all <- RET_county |>
-  left_join(rdc_mini, by = 'county') |>
-  relocate(county_fips) |>
-  drop_na(county)
+# RET_county <- RET_county |>
+#   rename(county = WellCounty)
+# 
+# county_all <- RET_county |>
+#   left_join(rdc_mini, by = 'county') |>
+#   relocate(county_fips) |>
+#   drop_na(county)
 
 # housing unit information
 
-housing_2024 <- readxl::read_excel('CO-EST2024-HU-41.xlsx', col_names = TRUE, skip = 1)
-
-housing_2024 <- housing_2024 |>
-  mutate(County = str_remove(County, "^\\."),
-         County = str_remove(County, " County, Oregon")) |>
-  rename(county = County)
-
-housing_2020 <- readxl::read_excel('co-est2020int-hu-41.xlsx', col_names = TRUE, skip = 1)
-
-housing_2020 <- housing_2020 |>
-  mutate(county = str_remove(county, "^\\."),
-         county = str_remove(county, " County, Oregon")) |>
-  rename_with(~ paste0("hu_", .), -c(county, base_2010))
-
-housing_2010 <- readxl::read_excel('hu-est00int-02-41.xls', col_names = TRUE)
-
-housing_2010 <- housing_2010 |>
-  mutate(county = str_remove(county, "^\\."),
-         county = str_remove(county, " County")) |>
-  rename_with(~ paste0("hu_", .), -county)
-
-housing <- housing_2010 |>
-  left_join(housing_2020, by = 'county') |>
-  left_join(housing_2024, by = 'county') |>
-  drop_na()
-
-# joining 
-
-county_all <- county_all |>
-  left_join(housing, by = 'county') |>
-  select(!(contains('active')))
+# housing_2024 <- readxl::read_excel('CO-EST2024-HU-41.xlsx', col_names = TRUE, skip = 1)
+# 
+# housing_2024 <- housing_2024 |>
+#   mutate(County = str_remove(County, "^\\."),
+#          County = str_remove(County, " County, Oregon")) |>
+#   rename(county = County)
+# 
+# housing_2020 <- readxl::read_excel('co-est2020int-hu-41.xlsx', col_names = TRUE, skip = 1)
+# 
+# housing_2020 <- housing_2020 |>
+#   mutate(county = str_remove(county, "^\\."),
+#          county = str_remove(county, " County, Oregon")) |>
+#   rename_with(~ paste0("hu_", .), -c(county, base_2010))
+# 
+# housing_2010 <- readxl::read_excel('hu-est00int-02-41.xls', col_names = TRUE)
+# 
+# housing_2010 <- housing_2010 |>
+#   mutate(county = str_remove(county, "^\\."),
+#          county = str_remove(county, " County")) |>
+#   rename_with(~ paste0("hu_", .), -county)
+# 
+# housing <- housing_2010 |>
+#   left_join(housing_2020, by = 'county') |>
+#   left_join(housing_2024, by = 'county') |>
+#   drop_na()
+# 
+# # joining 
+# 
+# county_all <- county_all |>
+#   left_join(housing, by = 'county') |>
+#   select(!(contains('active')))
 
 # parcel data ==================================================================
 
@@ -235,10 +236,10 @@ or_blocks <- census_blocks |>
   filter(state == 'OR')
 
 # reset wd for the next couple lines
-setwd("C:/Users/mreyno04/OneDrive - Environmental Protection Agency (EPA)/Profile/REPOS/dw-nitrate/RET/Extract_Regrid/Extract_Regrid/")
+setwd("C:/Users/mreyno04/OneDrive - Environmental Protection Agency (EPA)/Profile/REPOS/dw-nitrate/RET/Extract_Regrid/Extract_Regrid")
 
 # Load Regrid County File Paths
-paths <- read_csv(here("Data/file_links.csv"))%>%
+paths <- read_csv(here("Data/file_links.csv"))|>
   filter(state == "OR")
 
 # Create temporary folder to download spatial data to
@@ -268,8 +269,8 @@ for(n in 1:nrow(paths)){
     unzip(zipF, exdir = outDir)
     
     # Load data
-    sf <- st_read(paste0(temp.path,"/unzip.gdb", "/", tolower(paths$state[n]), "_", tolower(paths$county[n]), ".gdb"), quiet = TRUE) %>%
-      st_transform(st_crs(5070)) %>%
+    sf <- st_read(paste0(temp.path,"/unzip.gdb", "/", tolower(paths$state[n]), "_", tolower(paths$county[n]), ".gdb"), quiet = TRUE) |>
+      st_transform(st_crs(5070)) |>
       st_make_valid()
     
     # Save spatial file
@@ -280,10 +281,10 @@ for(n in 1:nrow(paths)){
     
     # Drop Geometry and filter to data
     ## !! Keep in mind that different counties can have different data columns. Only some columns are nationally consistent. !!
-    df <- sf%>%
-      st_drop_geometry()%>%
+    df <- sf|>
+      st_drop_geometry()|>
       # Filter out CWS Census Blocks
-      filter(!census_block %in% cws_blocks$GEOID20)%>%
+      filter(!census_block %in% cws_blocks$GEOID20)|>
       # Select relevant columns (Double check these)
       select(census_block,lbcs_activity,lbcs_activity_desc,lbcs_function,lbcs_function_desc,lbcs_structure,lbcs_structure_desc,
              lbcs_site,lbcs_site_desc,lbcs_ownership,lbcs_ownership_desc,ll_bldg_count,saledate,saleprice)
@@ -306,6 +307,8 @@ for(n in 1:nrow(paths)){
   
 }
 
+
+
 unlink(temp.path, recursive = TRUE)
 
 print(paste0("Completed ", st, " at: ", round(Sys.time())))
@@ -320,3 +323,43 @@ if(nrow(failed)>0){
   write_csv(failed,here("failed.csv"),delim = ",")
 }
 
+# load in all county csvs
+
+file_list <- list.files(path = "C:/Users/mreyno04/OneDrive - Environmental Protection Agency (EPA)/Profile/REPOS/dw-nitrate/RET/Extract_Regrid/Extract_Regrid/Data/County_Tables", 
+                        pattern = "\\.csv$", 
+                        full.names = TRUE)
+
+county_parcel <- read_csv(file_list) |>
+  filter(lbcs_ownership == '1100' & !is.na(saledate)) 
+
+cws_blocks <- cws_blocks |>
+  mutate(state = substr(PWSID, 1, 2)) |>
+  filter(state == 'OR')
+  
+
+  
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
