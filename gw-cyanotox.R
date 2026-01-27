@@ -23,28 +23,27 @@ setwd("C:/Users/mreyno04/OneDrive - Environmental Protection Agency (EPA)/Profil
 
 # community water system data? 
 
-
-
 ucmr4 <- read.csv('O:/Public/Pennino/HABs/ucmr_4_main.csv')
-ucmr_cyano <- ucmr4 |>
-  filter(facility_water_type == 'GU') |>
-  filter(contaminant == 'total microcystin' | contaminant == 'anatoxin-a' | contaminant == 'cylindrospermopsin') |>
-  rename(PWSID = pws_id)
-
-ucmr_cyano <- ucmr_cyano |>
-  mutate(cyano = factor(case_when(
-    contaminant == 'total microcystin' ~ 'micx',
-    contaminant == 'anatoxin-a' ~ 'ana',
-    contaminant == 'cylindrospermopsin' ~ 'cyl'
-  )),
-  present = 1) |>
-  select(PWSID, pws_name, state, cyano, present) |>
-  rename(PWS_name = pws_name) |>
-  distinct()
+# ucmr_cyano <- ucmr4 |>
+#   filter(facility_water_type == 'GU') |>
+#   filter(contaminant == 'total microcystin' | contaminant == 'anatoxin-a' | contaminant == 'cylindrospermopsin') |>
+#   rename(PWSID = pws_id)
+# 
+# ucmr_cyano <- ucmr_cyano |>
+#   mutate(cyano = factor(case_when(
+#     contaminant == 'total microcystin' ~ 'micx',
+#     contaminant == 'anatoxin-a' ~ 'ana',
+#     contaminant == 'cylindrospermopsin' ~ 'cyl'
+#   )),
+#   present = 1) |>
+#   select(PWSID, pws_name, state, cyano, present) |>
+#   rename(PWS_name = pws_name) |>
+#   distinct()
 
 ucmr_GU <- ucmr4 |>
   filter(facility_water_type == 'GU') |>
-  rename(PWSID = pws_id)
+  rename(PWSID = pws_id) |>
+  mutate(present = 1)
 
 # ucrm_gw data frame represents GWUDI systems that have cyanotoxin presence detected
 # must combined with some sort of geographic information 
@@ -62,14 +61,14 @@ pws_huc <- pws_huc |>
 # join
 #geo_cyanotox <- inner_join(pws_huc, ucmr_cyano, by = 'PWSID', relationship = 'many-to-many')
 # add geospatial
-nhd <- st_layers("O:/LAB/COR/Geospatial_Library_Resource/Physical/HYDROLOGY/WBD/WBD_National_GDB.gdb", layer = 'WBDHU12')
+nhd <- st_read("O:/LAB/COR/Geospatial_Library_Resource/Physical/HYDROLOGY/WBD/WBD_National_GDB.gdb", layer = 'WBDHU12')
 
 #check overlap 
 # length(intersect(nhd$huc12, geo_cyanotox$HUC12))
 
 nhd <- nhd |>
   rename(HUC12 = huc12)
-
+gc()
 # geo_all == ucmr data filtered to cyanotoxins and GWUDI then joined with HUC12 geospatial data using Micheal's
 # conversion methods and NHD huc info. Represents 94 PWS systems 
 # geo_all <- nhd |>
@@ -133,13 +132,13 @@ states <- tigris::states(cb = TRUE, progress_bar = FALSE)  %>%
 
 # glimpse the echo data
 
-echo_co <- read_csv('ECHO_CO.csv') |>
-  rename(PWSID = SDWAIDs)
-
-co_all <- echo_co |>
-  left_join(CO, by = 'PWSID') |>
-  st_as_sf(coords = c("FacLong", "FacLat"), crs = 4326) |>
-  st_transform(crs = 5072)
+# echo_co <- read_csv('ECHO_CO.csv') |>
+#   rename(PWSID = SDWAIDs)
+# 
+# co_all <- echo_co |>
+#   left_join(CO, by = 'PWSID') |>
+#   st_as_sf(coords = c("FacLong", "FacLat"), crs = 4326) |>
+#   st_transform(crs = 5072)
 # 
 # ggplot(co_all, aes(color = SDWAComplianceStatus)) +
 #   geom_sf() +
@@ -242,7 +241,7 @@ gwudi_all <- water_watch |>
 umcr_GU_sample <- ucmr_GU |>
   rename(PWS_name = pws_name,
          Source = facility_water_type) |>
-  select(PWSID, PWS_name, Source) |>
+  select(PWSID, PWS_name, Source, present) |>
   distinct()
 
 overlap_df <- intersect(gwudi_all$PWSID, umcr_GU_sample$PWSID)
@@ -271,159 +270,189 @@ test <- test |>
   st_transform(crs = 5072)
 
 all <- test |>
-  left_join(ucmr_cyano, by = 'PWSID', relationship = 'many-to-many') |>
-  mutate(present = as.factor(replace_na(present, 0)),
-         cyano = as.character(cyano),
-         cyano = replace_na(cyano, "non-detect"),
-         cyano = factor(cyano, levels = c())
+  mutate(present = replace_na(present, 0))
+
+
+# ggplot(all, aes(color = present)) +
+#   geom_sf(size = 2) +
+#   scale_color_manual(values = c("blue", "orange")) +
+#   geom_sf(data = states, fill = NA, color = 'black', size = 0.5) +
+#   theme_void()
+# 
+# ggsave("gwudi_natty.jpeg", width = 12, height = 8, device = 'jpeg', dpi = 500)
+# 
+# # color by cyano
+# ggplot(all, aes(color = cyano)) +
+#   geom_sf() +
+#   scale_color_manual(values = c("blue", "orange")) +
+#   geom_sf(data = states, fill = NA, color = 'black')
+
+
+SDWIS_GU <- readxl::read_excel('state_data/SDWIS_GU.xlsx')
+GDWIS_GUP <- readxl::read_excel('state_data/SDWIS_GUP.xlsx')
+
+SDWIS <- bind_rows(SDWIS_GU, GDWIS_GUP) |>
+  mutate(state = substr(PWSID, 1, 2))
+
+SDWISmini <- SDWIS |>
+  rename(Type = `PWS Type`,
+         County = `Counties Served`) |>
+  select(PWSID, PWS_name, Type, County)
+
+SDWISmini <- SDWISmini |>
+  left_join(pws_huc, by = 'PWSID') |>
+  drop_na(PWSID)
+
+SDWISmini <- SDWISmini |>
+  left_join(nhd_clean, by = 'HUC12')
+
+# length(unique(SDWISmini$PWSID))
+# # 1094
+# length(unique(all$PWSID))
+# # 1140
+# length(intersect(SDWISmini$PWSID, all$PWSID))
+# # 635
+# length(setdiff(SDWISmini$PWSID, all$PWSID))
+# # 459
+# length(setdiff(all$PWSID, SDWISmini$PWSID))
+# # 505
+
+# List to hold unique rows
+unique_rows <- list()
+
+# Example: Compare each row of data1 against all of data2
+for(i in 1:nrow(SDWISmini)) {
+  # Logic: If a PWSID in SDWISmini is not found in all, keep it
+  if(!any(all$PWSID == SDWISmini$PWSID[i])) {
+    unique_rows[[i]] <- SDWISmini[i, ]
+  }
+}
+
+# Bind rows together efficiently
+result <- bind_rows(unique_rows)
+
+result <- result |>
+  st_as_sf() |>
+  st_transform(crs = 5072)
+
+all_gu <- all |>
+  bind_rows(result) |>
+  st_point_on_surface() |>
+  mutate(present = replace_na(present, 0))
+
+binary <- c('0' = 'blue', '1' = 'orange')
+names <- c('0' = 'Other (State, SDWIS, etc.)', '1' = 'UCMR')
+
+oof <- all_gu |>
+  mutate(present = (as.factor(present))) |>
+  st_intersection(states)
+
+ggplot(oof, aes(color = present)) +
+  geom_sf(size = 0.5) +
+  scale_color_manual(values = binary,
+                     labels = names,
+                     name = "Data Source") +
+  geom_sf(data = states, fill = NA, color = 'black', size = 0.3) +
+  theme_void() +
+  theme(
+    legend.position = "inside",
+    legend.position.inside = c(0.2, 0.2)
   )
 
+ggsave("GWUDI_all.jpeg", width = 8, height = 6, device = 'jpeg', dpi = 500)
 
-ggplot(all, aes(color = present)) +
-  geom_sf() +
-  scale_color_manual(values = c("blue", "orange")) +
-  geom_sf(data = states, fill = NA, color = 'black')
-
-# color by cyano
-ggplot(all, aes(color = cyano)) +
-  geom_sf() +
-  scale_color_manual(values = c("blue", "orange")) +
-  geom_sf(data = states, fill = NA, color = 'black')
-
-
-# SDWIS_GU <- readxl::read_excel('state_data/SDWIS_GU.xlsx')
-# GDWIS_GUP <- readxl::read_excel('state_data/SDWIS_GUP.xlsx')
-# 
-# SDWIS <- bind_rows(SDWIS_GU, GDWIS_GUP) |>
-#   mutate(state = substr(PWSID, 1, 2))
-# 
-# SDWISmini <- SDWIS |>
-#   rename(Type = `PWS Type`,
-#          County = `Counties Served`) |>
-#   select(PWSID, PWS_name, Type, County)
-# 
-# df <- bind_rows(gwudi_all, SDWISmini) |>
-#   distinct()
-# 
-# df <- df |>
-#   inner_join(pws_huc, by = 'PWSID',relationship = "many-to-many") |>
-#   drop_na(PWSID)
-# 
-# df <- df |>
-#   inner_join(nhd, by = 'HUC12', relationship = 'many-to-many')
-# 
-# 
-# length(unique(SDWIS$PWSID))
-# # 1124
-# length(unique(gwudi_all$PWSID))
-# # 1142
-# length(intersect(SDWIS$PWSID, gwudi_all$PWSID))
-# # 650
-# length(setdiff(SDWIS$PWSID, gwudi_all$PWSID))
-# # 474
-# length(setdiff(gwudi_all$PWSID, SDWIS$PWSID))
-# # 492
-# # there's 1616 unique PWSID that are GWUDI 
-# 
-# length(symdiff(gwudi_all$PWSID, SDWIS$PWSID))
-# 
-# list_pws <- symdiff(gwudi_all$PWSID, SDWIS$PWSID)
-# list_pws2 <- intersect(SDWIS$PWSID, gwudi_all$PWSID)
 
 # census block data for PWS ====================================================
 
-census_blocks <- read_csv('CWS_Boundaries_Latest/Census_Tables/Blocks_V_2_1.csv')
-
-or_blocks <- census_blocks |>
-  mutate(state = substr(PWSID, 1, 2)) |>
-  filter(state == 'OR')
-
-# watershed level data 
-
-crosswalk <- foreign::read.dbf('O:/LAB/COR/Geospatial_Library_Resource/Physical/HYDROLOGY/NHDPlusV21/NHDPlusNationalData/NHDPlusV1Network_V2Network_Crosswalk.dbf')
-
-get_nlcd <- function(coms){
-  sc_get_data(metric = 'PctWdWet2016, PctUrbMd2016, PctUrbLo2016, PctUrbHi2016,
-                          PctMxFst2016, PctCrop2016, PctHay2016, PctDecid2016,
-                          PctConif2016, PctUrbOp2016, PctHbWet2016',
-              aoi='watershed',
-              comid = coms,
-              showAreaSqKm = TRUE)
-}
-
-chunks <- split(PredData$COMID, ceiling(seq_along(PredData$COMID) / 10000))
-
-ncldMas <- do.call(rbind, lapply(chunks, get_nlcd))
-
+# census_blocks <- read_csv('CWS_Boundaries_Latest/Census_Tables/Blocks_V_2_1.csv')
+# 
+# or_blocks <- census_blocks |>
+#   mutate(state = substr(PWSID, 1, 2)) |>
+#   filter(state == 'OR')
+# 
+# # watershed level data 
+# 
+# crosswalk <- foreign::read.dbf('O:/LAB/COR/Geospatial_Library_Resource/Physical/HYDROLOGY/NHDPlusV21/NHDPlusNationalData/NHDPlusV1Network_V2Network_Crosswalk.dbf')
+# 
+# get_nlcd <- function(coms){
+#   sc_get_data(metric = 'PctWdWet2016, PctUrbMd2016, PctUrbLo2016, PctUrbHi2016,
+#                           PctMxFst2016, PctCrop2016, PctHay2016, PctDecid2016,
+#                           PctConif2016, PctUrbOp2016, PctHbWet2016',
+#               aoi='watershed',
+#               comid = coms,
+#               showAreaSqKm = TRUE)
+# }
+# 
+# chunks <- split(PredData$COMID, ceiling(seq_along(PredData$COMID) / 10000))
+# 
+# ncldMas <- do.call(rbind, lapply(chunks, get_nlcd))
+# 
+# # ncldMas <- ncldMas |>
+# #   dplyr::select(-WSAREASQKM)
+# 
 # ncldMas <- ncldMas |>
-#   dplyr::select(-WSAREASQKM)
-
-ncldMas <- ncldMas |>
-  mutate(agr_ws = PCTCROP2016WS + PCTHAY2016WS,
-         dev_ws = PCTURBLO2016WS + PCTURBMD2016WS + PCTURBOP2016WS + PCTURBHI2016WS,
-         fst_ws = PCTMXFST2016WS + PCTDECID2016WS + PCTCONIF2016WS,
-         wet_ws = PCTWDWET2016WS + PCTHBWET2016WS,
-         COMID = COMID,
-         .keep = 'unused')
-
-# Oregon cyanotoxin data =======================================================
-
-or_tox <- read_csv('cyanotoxin-sample-results-all.csv')
-
-or_tox <- or_tox |>
-  rename(PWSID = `PWS ID`,
-         PWS_name = `PWS Name\n\t\t\t\t\n`,
-         County = `County Served`,
-         micx = `Total Microcystins(ug/L)`,
-         cylin = `Cylindrospermopsin(ug/L)`)  |>
-  mutate(PWSID = paste0("OR", PWSID),
-         micx = as.numeric(micx),
-         micx = replace_na(micx, 0),
-         cylin = as.numeric(cylin),
-         cylin = replace_na(cylin, 0))
-
-intersect(or_tox$PWSID, or$PWSID)
-
-or_tox <- or_tox |>
-  filter(PWSID == "OR00839" |PWSID == "OR00835" | PWSID == "OR00724" | PWSID == "OR94929" | PWSID == "OR90476")
-
-
-
-# lets try colorado ============================================================
-
-hab_co <- read_csv('state_data/ToxicAlgaeDataHistoricalResults-co.csv')
-
-hab_co <- hab_co |>
-  filter(`Tested, toxic levels of algae found` == 'Toxic levels of algae found')
-
-hab_co <- hab_co |>
-  mutate(lake_coords = factor(case_when(
-    `Water body`  ~ 'HNHM',
-    (n_dev_inputs < 10 | p_farm_inputs < 4) & pred_micx_fit >= 0.50 ~ 'LNHM',
-    (n_dev_inputs >= 10 | p_farm_inputs >= 4) & pred_micx_fit < 0.50 ~ 'HNLM',
-    (n_dev_inputs < 10 | p_farm_inputs < 4) & pred_micx_fit < 0.50 ~ 'LNLM',
-    TRUE ~ 'OTHER')))
-
-
-loc <- "O:/LAB/COR/Geospatial_Library_Resource/Physical/HYDROLOGY/NHDPlusV21/NHDPlusNationalData/NHDPlusV21_National_Seamless_Flattened_Lower48.gdb"
-
-wbd <- sf::st_read(dsn = loc, layer = 'NHDWaterbody') |>
-  st_transform(5072)
-
-wbd_copy <- wbd |>
-  subset(COMID %in% PredData$COMID) |>
-  dplyr::select(COMID, MaxDepth, Shape)
-
-for (Shape in 1:length(wbd_copy)) {
-  shapes <- wbd_copy$Shape
-  wbd_copy$lake_area <- st_area(shapes)
-}
-
-wbd_copy <- wbd_copy |>
-  mutate(lake_area = drop_units(lake_area)) |>
-  st_point_on_surface()
-
-    
-
+#   mutate(agr_ws = PCTCROP2016WS + PCTHAY2016WS,
+#          dev_ws = PCTURBLO2016WS + PCTURBMD2016WS + PCTURBOP2016WS + PCTURBHI2016WS,
+#          fst_ws = PCTMXFST2016WS + PCTDECID2016WS + PCTCONIF2016WS,
+#          wet_ws = PCTWDWET2016WS + PCTHBWET2016WS,
+#          COMID = COMID,
+#          .keep = 'unused')
+# 
+# # Oregon cyanotoxin data =======================================================
+# 
+# or_tox <- read_csv('cyanotoxin-sample-results-all.csv')
+# 
+# or_tox <- or_tox |>
+#   rename(PWSID = `PWS ID`,
+#          PWS_name = `PWS Name\n\t\t\t\t\n`,
+#          County = `County Served`,
+#          micx = `Total Microcystins(ug/L)`,
+#          cylin = `Cylindrospermopsin(ug/L)`)  |>
+#   mutate(PWSID = paste0("OR", PWSID),
+#          micx = as.numeric(micx),
+#          micx = replace_na(micx, 0),
+#          cylin = as.numeric(cylin),
+#          cylin = replace_na(cylin, 0))
+# 
+# intersect(or_tox$PWSID, or$PWSID)
+# 
+# or_tox <- or_tox |>
+#   filter(PWSID == "OR00839" |PWSID == "OR00835" | PWSID == "OR00724" | PWSID == "OR94929" | PWSID == "OR90476")
+# 
+# 
+# 
+# # lets try colorado ============================================================
+# 
+# hab_co <- read_csv('state_data/ToxicAlgaeDataHistoricalResults-co.csv')
+# 
+# hab_co <- hab_co |>
+#   filter(`Tested, toxic levels of algae found` == 'Toxic levels of algae found')
+# 
+# hab_co <- hab_co |>
+#   mutate(lake_coords = factor(case_when(
+#     `Water body`  ~ 'HNHM',
+#     (n_dev_inputs < 10 | p_farm_inputs < 4) & pred_micx_fit >= 0.50 ~ 'LNHM',
+#     (n_dev_inputs >= 10 | p_farm_inputs >= 4) & pred_micx_fit < 0.50 ~ 'HNLM',
+#     (n_dev_inputs < 10 | p_farm_inputs < 4) & pred_micx_fit < 0.50 ~ 'LNLM',
+#     TRUE ~ 'OTHER')))
+# 
+# 
+# loc <- "O:/LAB/COR/Geospatial_Library_Resource/Physical/HYDROLOGY/NHDPlusV21/NHDPlusNationalData/NHDPlusV21_National_Seamless_Flattened_Lower48.gdb"
+# 
+# wbd <- sf::st_read(dsn = loc, layer = 'NHDWaterbody') |>
+#   st_transform(5072)
+# 
+# wbd_copy <- wbd |>
+#   subset(COMID %in% PredData$COMID) |>
+#   dplyr::select(COMID, MaxDepth, Shape)
+# 
+# for (Shape in 1:length(wbd_copy)) {
+#   shapes <- wbd_copy$Shape
+#   wbd_copy$lake_area <- st_area(shapes)
+# }
+# 
+# wbd_copy <- wbd_copy |>
+#   mutate(lake_area = drop_units(lake_area)) |>
+#   st_point_on_surface()
 
 
