@@ -8,7 +8,7 @@ library(RColorBrewer)
 library(readr)
 #install.packages('tidygeocoder')
 library(tidygeocoder)
-install.packages("cdlTools")
+# install.packages("cdlTools")
 library(cdlTools)
 library(janitor)
 library(StreamCatTools)
@@ -61,7 +61,8 @@ pws_huc <- pws_huc |>
 # join
 #geo_cyanotox <- inner_join(pws_huc, ucmr_cyano, by = 'PWSID', relationship = 'many-to-many')
 # add geospatial
-nhd <- st_read("O:/LAB/COR/Geospatial_Library_Resource/Physical/HYDROLOGY/WBD/WBD_National_GDB.gdb", layer = 'WBDHU12')
+#nhd <- st_read("O:/LAB/COR/Geospatial_Library_Resource/Physical/HYDROLOGY/WBD/WBD_National_GDB.gdb", layer = 'WBDHU12')
+nhd <- load("nhd.rda")
 
 #check overlap 
 # length(intersect(nhd$huc12, geo_cyanotox$HUC12))
@@ -347,7 +348,7 @@ oof <- all_gu |>
   mutate(present = (as.factor(present))) |>
   st_intersection(states)
 
-ggplot(oof, aes(color = present)) +
+GWUDI_map <- ggplot(oof, aes(color = present)) +
   geom_sf(size = 0.5) +
   scale_color_manual(values = binary,
                      labels = names,
@@ -359,7 +360,7 @@ ggplot(oof, aes(color = present)) +
     legend.position.inside = c(0.2, 0.2)
   )
 
-ggsave("GWUDI_all.jpeg", width = 8, height = 6, device = 'jpeg', dpi = 500)
+#ggsave("GWUDI_all.jpeg", width = 8, height = 6, device = 'jpeg', dpi = 500)
 
 
 # census block data for PWS ====================================================
