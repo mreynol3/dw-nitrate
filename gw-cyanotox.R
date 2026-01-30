@@ -9,7 +9,7 @@ library(readr)
 #install.packages('tidygeocoder')
 library(tidygeocoder)
 # install.packages("cdlTools")
-library(cdlTools)
+#library(cdlTools)
 library(janitor)
 library(StreamCatTools)
 
@@ -62,13 +62,13 @@ pws_huc <- pws_huc |>
 #geo_cyanotox <- inner_join(pws_huc, ucmr_cyano, by = 'PWSID', relationship = 'many-to-many')
 # add geospatial
 #nhd <- st_read("O:/LAB/COR/Geospatial_Library_Resource/Physical/HYDROLOGY/WBD/WBD_National_GDB.gdb", layer = 'WBDHU12')
-nhd <- load("nhd.rda")
+nhd <- load("C:/Users/mreyno04/OneDrive - Environmental Protection Agency (EPA)/Profile/REPOS/dw-nitrate/gw-cyanotox/nhd.rda")
 
 #check overlap 
 # length(intersect(nhd$huc12, geo_cyanotox$HUC12))
 
-nhd <- nhd |>
-  rename(HUC12 = huc12)
+# nhd <- nhd |>
+#   rename(HUC12 = huc12)
 gc()
 # geo_all == ucmr data filtered to cyanotoxins and GWUDI then joined with HUC12 geospatial data using Micheal's
 # conversion methods and NHD huc info. Represents 94 PWS systems 
@@ -130,20 +130,6 @@ states <- tigris::states(cb = TRUE, progress_bar = FALSE)  %>%
 # 
 # welp_geo <- welp_geo |>
 #   geocode(address, method = 'osm', lat = latitude, long = longitude)
-
-# glimpse the echo data
-
-# echo_co <- read_csv('ECHO_CO.csv') |>
-#   rename(PWSID = SDWAIDs)
-# 
-# co_all <- echo_co |>
-#   left_join(CO, by = 'PWSID') |>
-#   st_as_sf(coords = c("FacLong", "FacLat"), crs = 4326) |>
-#   st_transform(crs = 5072)
-# 
-# ggplot(co_all, aes(color = SDWAComplianceStatus)) +
-#   geom_sf() +
-#   geom_sf(data = states, fill = NA, color = 'black')
 
 
 # state compilation ============================================================
@@ -318,37 +304,32 @@ SDWISmini <- SDWISmini |>
 # length(setdiff(all$PWSID, SDWISmini$PWSID))
 # # 505
 
-# List to hold unique rows
-unique_rows <- list()
-
-# Example: Compare each row of data1 against all of data2
-for(i in 1:nrow(SDWISmini)) {
-  # Logic: If a PWSID in SDWISmini is not found in all, keep it
-  if(!any(all$PWSID == SDWISmini$PWSID[i])) {
-    unique_rows[[i]] <- SDWISmini[i, ]
-  }
-}
-
-# Bind rows together efficiently
-result <- bind_rows(unique_rows)
-
-result <- result |>
+# # List to hold unique rows
+# unique_rows <- list()
+# 
+# # Example: Compare each row of data1 against all of data2
+# for(i in 1:nrow(SDWISmini)) {
+#   # Logic: If a PWSID in SDWISmini is not found in all, keep it
+#   if(!any(all$PWSID == SDWISmini$PWSID[i])) {
+#     unique_rows[[i]] <- SDWISmini[i, ]
+#   }
+# }
+# 
+# # Bind rows together efficiently
+# result <- bind_rows(unique_rows)
+# 
+SDWISmini <- SDWISmini |>
   st_as_sf() |>
   st_transform(crs = 5072)
-
-all_gu <- all |>
-  bind_rows(result) |>
-  st_point_on_surface() |>
-  mutate(present = replace_na(present, 0))
 
 binary <- c('0' = 'blue', '1' = 'orange')
 names <- c('0' = 'Other (State, SDWIS, etc.)', '1' = 'UCMR')
 
-oof <- all_gu |>
+all_gu <- all_gu |>
   mutate(present = (as.factor(present))) |>
   st_intersection(states)
 
-GWUDI_map <- ggplot(oof, aes(color = present)) +
+ggplot(all_gu, aes(color = present)) +
   geom_sf(size = 0.5) +
   scale_color_manual(values = binary,
                      labels = names,
@@ -438,10 +419,10 @@ GWUDI_map <- ggplot(oof, aes(color = present)) +
 #     TRUE ~ 'OTHER')))
 # 
 # 
-# loc <- "O:/LAB/COR/Geospatial_Library_Resource/Physical/HYDROLOGY/NHDPlusV21/NHDPlusNationalData/NHDPlusV21_National_Seamless_Flattened_Lower48.gdb"
-# 
-# wbd <- sf::st_read(dsn = loc, layer = 'NHDWaterbody') |>
-#   st_transform(5072)
+loc <- "O:/LAB/COR/Geospatial_Library_Resource/Physical/HYDROLOGY/NHDPlusV21/NHDPlusNationalData/NHDPlusV21_National_Seamless_Flattened_Lower48.gdb"
+
+cat <- sf::st_read(dsn = loc, layer = 'Catchment') |>
+  st_transform(5072)
 # 
 # wbd_copy <- wbd |>
 #   subset(COMID %in% PredData$COMID) |>
@@ -455,5 +436,164 @@ GWUDI_map <- ggplot(oof, aes(color = present)) +
 # wbd_copy <- wbd_copy |>
 #   mutate(lake_area = drop_units(lake_area)) |>
 #   st_point_on_surface()
+
+# colorado ---------------------------------------------------------------------
+
+echo_co <- read_csv('ECHO_CO.csv') |>
+  rename(PWSID = SDWAIDs)
+
+co_all <- echo_co |>
+  left_join(CO, by = 'PWSID') |>
+  st_as_sf(coords = c("FacLong", "FacLat"), crs = 4326) |>
+  st_transform(crs = 5072)
+
+# ggplot(co_all, aes(color = SDWAComplianceStatus)) +
+#   geom_sf() +
+#   geom_sf(data = states, fill = NA, color = 'black')
+
+allsysco <- read_csv('state_data/all_CO_ECHO.csv')
+
+codetail <- readxl::read_excel('state_data/CO_system_detail.xlsx', skip = 4)
+codetail <- codetail |>
+  rename(FacName = `PWS Name`)
+
+confirm_co <- codetail |>
+  left_join(allsysco, by = 'FacName', relationship = 'many-to-many') |>
+  drop_na(FacLong, FacLat) |>
+  st_as_sf(coords = c("FacLong", "FacLat"), crs = 4326) |>
+  st_transform(crs = 5072)
+
+confirm_co <- confirm_co |>
+  mutate(source_class = factor(case_when(
+    `Primary Source` == "Ground water" | `Primary Source` == "Ground water purchased" ~ 'GW',
+    `Primary Source` == "Groundwater under influence of surface water" | `Primary Source` == "Purchased ground water under influence of surface water source" ~ 'GWUDI',
+    `Primary Source` == "Surface water" | `Primary Source` == "Surface water purchased" ~ 'SW',
+    TRUE ~ 'OTHER'
+    )))
+
+co_counties <- tigris::counties("CO") |>
+  st_transform(crs=5072)
+
+co_all <- co_all |>
+  mutate(source_class = 'GWUDI') |>
+  select(FacName, PWSID, PWS_name, Source, source_class, Type, geometry)
+  
+confirm_co <- confirm_co |>
+  select(`PWS ID`, FacName, `Primary Source`, source_class, geometry) |>
+  rename(PWSID = `PWS ID`,
+         Source = `Primary Source`)
+
+colorado <- bind_rows(confirm_co, co_all) |>
+  distinct(PWSID, .keep_all = TRUE)  |>
+  st_intersection(co_counties)
+
+# ggplot(colorado, aes(color = source_class)) +
+#   geom_sf(size = 2) +
+#   geom_sf(data = co_counties, fill = NA, color = 'black', size = 0.3) +
+#   theme_void()
+
+# print(table(colorado$source_class))
+#  GW   GWUDI   SW 
+# 638   171   288 
+
+# Get COMIDs using nhdplusTools package
+colorado$COMID<- NA
+for (i in 1:nrow(colorado)){
+  print (i)
+  colorado[i,'comid'] <- discover_nhdplus_id(colorado[i,c('geometry')])
+}
+#load(system.file("extdata", "sample_nrsa_data.rda", package="StreamCatTools"))
+
+# get particular StreamCat data for all these NRSA sites
+# nrsa_sf$COMID <- as.character(nrsa_sf$COMID)
+# comids <- nrsa_sf$COMID
+# comids <- comids[!is.na(comids)]
+# comids <- comids[c(1:700)]
+# comids <- paste(comids,collapse=',')
+# df <- sc_get_data(metric='pctcrop2006', aoi='ws', comid=comids)
+# 
+# # glimpse(df)
+# df$COMID <- as.integer(df$comid)
+# nrsa_sf <- dplyr::left_join(nrsa_sf, df, by='COMID')
+
+get_mets <- function(coms){
+  StreamCatTools::sc_get_data(metric = 'bfi,clay,conn,hydrlcond,pctagdrainage,perm,precip9120,rckdep,sand,sed,tmean9120,wetindex,wtdep',
+                              aoi='ws',
+                              comid = coms,
+                              showAreaSqKm = TRUE)
+}
+
+chunks <- split(colorado$COMID, ceiling(seq_along(colorado$COMID) / 500))
+
+metrics <- as.data.frame(do.call(rbind, lapply(chunks, get_mets)))
+
+metrics <- metrics|>
+  rename(COMID = comid)
+
+colorado_all <- colorado |>
+  left_join(metrics, by = 'COMID') |>
+  mutate(gwudi_class = if_else(source_class == 'GWUDI', 1, 0))
+
+# gwudi model 1 
+gwudi1_mod <- spglm(formula = gwudi_class ~ wtdepws + clayws + rckdepws + hydrlcondws + 
+        bfiws + permws + precip9120ws, family = "binomial", data = colorado_all, 
+      spcov_type = "exponential")
+
+# gwudi model 2
+wtdep_mod <- spglm(gwudi_class ~ wtdepws + clayws + bfiws + permws + wetindexws + sedws + 
+                     connws+ precip9120ws, colorado_all, family='binomial', spcov_type = 'exponential')
+anova(wtdep_mod)
+
+# gwudi model 3
+gwudi_3 <- spglm(gwudi_class ~ wtdepws + clayws + bfiws + permws + wetindexws +  
+                     precip9120ws, colorado_all, family='binomial', spcov_type = 'exponential')
+
+
+aquifers <- readxl::read_excel('COGWAtlasData/ON-010D-Aquifer_Data-v20200520.xlsx')
+aquifers_sf <- st_read('COGWAtlasData/ON-010D-GIS_Data-v20210304/ON_010_Colorado_Groundwater_Atlas_v20210304.mpk')
+
+coli <- readxl::read_excel('CO_COLI.xlsx', skip = 4)
+coli <- coli |>
+  mutate(coli = 1)
+
+colimini <- coli |>
+  rename(PWSID = `PWS ID`) |>
+  select(PWSID, coli)
+
+colorado_all <- colorado_all |>
+  left_join(colimini, by = 'PWSID', relationship = "many-to-many")
+
+colorado_all <- colorado_all |>
+  distinct() |>
+  mutate(coli = replace_na(coli, 0)) 
+
+# proximity to surface water
+
+wbd <- sf::st_read(dsn = loc, layer = 'NHDWaterbody') |>
+  st_transform(5072)
+
+wbd_co <- wbd |>
+  st_intersection(co_counties)
+
+nearest_index <- st_nearest_feature(colorado_all, wbd_co)
+distances <- st_distance(colorado_all, wbd_co[nearest_index, ], by_element = TRUE)
+
+colorado_all <- colorado_all |>
+  mutate(prox_sw = as.numeric(distances))
+
+  
+gwudi_4 <- spglm(gwudi_class ~ wtdepws + coli + clayws + bfiws + permws + wetindexws +  
+                   precip9120ws, colorado_all, family='binomial', spcov_type = 'exponential')
+
+
+gwudi_5 <- spglm(gwudi_class ~ wtdepws + coli + clayws + bfiws + permws + wetindexws +  
+                   precip9120ws + rckdepws + hydrlcondws + connws + sedws, 
+                 colorado_all, family='binomial', spcov_type = 'exponential')
+
+
+gwudi_6 <- spglm(gwudi_class ~ wtdepws + clayws + bfiws + permws + 
+                   precip9120ws + prox_sw + coli, 
+                 colorado_all, family='binomial', spcov_type = 'exponential')
+summary(gwudi_6)
 
 
