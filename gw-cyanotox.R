@@ -62,13 +62,13 @@ pws_huc <- pws_huc |>
 #geo_cyanotox <- inner_join(pws_huc, ucmr_cyano, by = 'PWSID', relationship = 'many-to-many')
 # add geospatial
 #nhd <- st_read("O:/LAB/COR/Geospatial_Library_Resource/Physical/HYDROLOGY/WBD/WBD_National_GDB.gdb", layer = 'WBDHU12')
-nhd <- load("C:/Users/mreyno04/OneDrive - Environmental Protection Agency (EPA)/Profile/REPOS/dw-nitrate/gw-cyanotox/nhd.rda")
+nhd <- st_read("O:/LAB/COR/Geospatial_Library_Resource/Physical/HYDROLOGY/WBD/WBD_National_GDB.gdb", layer = 'WBDHU12')
 
 #check overlap 
 # length(intersect(nhd$huc12, geo_cyanotox$HUC12))
 
-# nhd <- nhd |>
-#   rename(HUC12 = huc12)
+nhd <- nhd |>
+  rename(HUC12 = huc12)
 gc()
 # geo_all == ucmr data filtered to cyanotoxins and GWUDI then joined with HUC12 geospatial data using Micheal's
 # conversion methods and NHD huc info. Represents 94 PWS systems 
@@ -325,7 +325,7 @@ SDWISmini <- SDWISmini |>
 binary <- c('0' = 'blue', '1' = 'orange')
 names <- c('0' = 'Other (State, SDWIS, etc.)', '1' = 'UCMR')
 
-all_gu <- all_gu |>
+all <- all |>
   mutate(present = (as.factor(present))) |>
   st_intersection(states)
 
@@ -500,7 +500,7 @@ colorado <- bind_rows(confirm_co, co_all) |>
 colorado$COMID<- NA
 for (i in 1:nrow(colorado)){
   print (i)
-  colorado[i,'comid'] <- discover_nhdplus_id(colorado[i,c('geometry')])
+  colorado[i,'comid'] <- nhdplusTools::discover_nhdplus_id(colorado[i,c('geometry')])
 }
 #load(system.file("extdata", "sample_nrsa_data.rda", package="StreamCatTools"))
 
@@ -516,9 +516,13 @@ for (i in 1:nrow(colorado)){
 # df$COMID <- as.integer(df$comid)
 # nrsa_sf <- dplyr::left_join(nrsa_sf, df, by='COMID')
 
+colorado <- colorado |>
+  select(-COMID) |>
+  rename(COMID = comid)
+
 get_mets <- function(coms){
-  StreamCatTools::sc_get_data(metric = 'bfi,clay,conn,hydrlcond,pctagdrainage,perm,precip9120,rckdep,sand,sed,tmean9120,wetindex,wtdep',
-                              aoi='ws',
+  StreamCatTools::sc_get_data(metric = 'bfi,clay,conn,hydrlcond,pctagdrainage,perm,precip9120,rckdep,sand,sed,tmean9120,wetindex,wtdep,elev,fe2o3,hyd,om,pctcarbresid,pctconif2019,pctdecid2019,pctow2019,pcturbhi2019,pctwater,sed',
+                              aoi='cat',
                               comid = coms,
                               showAreaSqKm = TRUE)
 }
@@ -527,12 +531,13 @@ chunks <- split(colorado$COMID, ceiling(seq_along(colorado$COMID) / 500))
 
 metrics <- as.data.frame(do.call(rbind, lapply(chunks, get_mets)))
 
-metrics <- metrics|>
+metrics <- metrics |>
   rename(COMID = comid)
 
 colorado_all <- colorado |>
-  left_join(metrics, by = 'COMID') |>
-  mutate(gwudi_class = if_else(source_class == 'GWUDI', 1, 0))
+  left_join(metrics, by = 'COMID', relationship = 'many-to-many') |>
+  mutate(gwudi_class = if_else(source_class == 'GWUDI', 1, 0)) |>
+  distinct()
 
 # gwudi model 1 
 gwudi1_mod <- spglm(formula = gwudi_class ~ wtdepws + clayws + rckdepws + hydrlcondws + 
@@ -545,8 +550,8 @@ wtdep_mod <- spglm(gwudi_class ~ wtdepws + clayws + bfiws + permws + wetindexws 
 anova(wtdep_mod)
 
 # gwudi model 3
-gwudi_3 <- spglm(gwudi_class ~ wtdepws + clayws + bfiws + permws + wetindexws +  
-                     precip9120ws, colorado_all, family='binomial', spcov_type = 'exponential')
+gwudi_3 <- spglm(gwudi_class ~ wtdepcat + claycat + bficat + permcat + wetindexcat +  
+                     precip9120cat, colorado_all, family='binomial', spcov_type = 'exponential')
 
 
 aquifers <- readxl::read_excel('COGWAtlasData/ON-010D-Aquifer_Data-v20200520.xlsx')
@@ -582,8 +587,8 @@ colorado_all <- colorado_all |>
   mutate(prox_sw = as.numeric(distances))
 
   
-gwudi_4 <- spglm(gwudi_class ~ wtdepws + coli + clayws + bfiws + permws + wetindexws +  
-                   precip9120ws, colorado_all, family='binomial', spcov_type = 'exponential')
+gwudi_4 <- spglm(gwudi_class ~ wtdepcat + coli + claycat + bficat + permcat + wetindexcat +  
+                   precip9120cat + hydrlcondcat + conncat + sandcat + rckdepcat, colorado_all, family='binomial', spcov_type = 'exponential')
 
 
 gwudi_5 <- spglm(gwudi_class ~ wtdepws + coli + clayws + bfiws + permws + wetindexws +  
@@ -595,5 +600,43 @@ gwudi_6 <- spglm(gwudi_class ~ wtdepws + clayws + bfiws + permws +
                    precip9120ws + prox_sw + coli, 
                  colorado_all, family='binomial', spcov_type = 'exponential')
 summary(gwudi_6)
+
+colorado_all <- colorado_all |>
+  mutate(gwudi_class = as.factor(gwudi_class))
+
+colomini <- colorado_all |>
+  select(gwudi_class, wtdepcat, coli , claycat , bficat , permcat , wetindexcat ,  
+           precip9120cat , hydrlcondcat , conncat , sandcat , rckdepcat,) |>
+  st_drop_geometry()
+
+fr_gwudi <- ranger(gwudi_class ~ ., data = colomini, num.trees = 500, 
+                   classification = TRUE,
+                   probability = TRUE)
+
+
+ggplot(colorado_all, aes(pcturbhi2019cat,source_class)) +
+  geom_boxplot() +
+  theme_bw()  +
+  coord_flip()
+
+gwudi_7 <- spglm(gwudi_class ~ wtdepcat + claycat + bficat + permcat + 
+                   precip9120cat + pctconif2019cat + pctow2019cat + pcturbhi2019cat, 
+                 colorado_all, family='poisson', spcov_type = 'exponential')
+summary(gwudi_7)
+
+colomini <- colorado_all |>
+  select(gwudi_class, wtdepcat, claycat , bficat , permcat , wetindexcat ,  
+         precip9120cat , hydrlcondcat , conncat , sandcat , rckdepcat,pctconif2019cat,pctow2019cat,pcturbhi2019cat,) |>
+  st_drop_geometry()
+
+random_gwudi <- ranger(gwudi_class ~ ., data = colomini, num.trees = 500, 
+                   classification = TRUE,
+                   probability = TRUE)
+random_gwudi
+
+
+
+
+
 
 
