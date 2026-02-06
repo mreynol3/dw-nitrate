@@ -578,7 +578,8 @@ wbd <- sf::st_read(dsn = loc, layer = 'NHDWaterbody') |>
   st_transform(5072)
 
 wbd_co <- wbd |>
-  st_intersection(co_counties)
+  st_intersection(co_counties) |>
+  filter(FTYPE == 'LakePond' | FTYPE == 'Reservoir')
 
 nearest_index <- st_nearest_feature(colorado_all, wbd_co)
 distances <- st_distance(colorado_all, wbd_co[nearest_index, ], by_element = TRUE)
@@ -586,43 +587,87 @@ distances <- st_distance(colorado_all, wbd_co[nearest_index, ], by_element = TRU
 colorado_all <- colorado_all |>
   mutate(prox_sw = as.numeric(distances))
 
-  
+# testing variables
+ggplot(colorado_all, aes(pcturbhi2019cat,source_class)) +
+  geom_boxplot() +
+  theme_bw()  +
+  coord_flip()
+
+
+# develop models ---------------------------------------------------------------
+
+# run model with coliform data: AUC: 0.7272
 gwudi_4 <- spglm(gwudi_class ~ wtdepcat + coli + claycat + bficat + permcat + wetindexcat +  
                    precip9120cat + hydrlcondcat + conncat + sandcat + rckdepcat, colorado_all, family='binomial', spcov_type = 'exponential')
+# model fit metrics
+gwudi4_loocv <- loocv(gwudi_4, cv_predict = TRUE)
+calc4 <- pROC::roc(colorado_all$gwudi_class, gwudi4_loocv$cv_predict)
+print(calc4$auc)
 
+# AUC: 0.6941
+gwudi_6 <- spglm(gwudi_class ~ wtdepcat + claycat + bficat + permcat + prox_sw + coli + permcat + rckdepcat, 
+                 colorado_all, family='binomial', spcov_type = 'exponential')
+gwudi6_loocv <- loocv(gwudi_6, cv_predict = TRUE)
+calc6 <- pROC::roc(colorado_all$gwudi_class, gwudi6_loocv$cv_predict)
+print(calc6$auc)
 
-gwudi_5 <- spglm(gwudi_class ~ wtdepws + coli + clayws + bfiws + permws + wetindexws +  
-                   precip9120ws + rckdepws + hydrlcondws + connws + sedws, 
+# Area under the curve: 0.6836
+gwudi_legit <- spglm(gwudi_class ~ wtdepcat + claycat + permcat + precip9120cat + bficat + 
+                   sandcat + pctcarbresidcat + rckdepcat, 
                  colorado_all, family='binomial', spcov_type = 'exponential')
 
+# Run leave one out cross validation
+legit_loocv <- loocv(gwudi_legit, cv_predict = TRUE)
+calc <- pROC::roc(colorado_all$gwudi_class, legit_loocv$cv_predict)
 
-gwudi_6 <- spglm(gwudi_class ~ wtdepws + clayws + bfiws + permws + 
-                   precip9120ws + prox_sw + coli, 
+#Area under the curve: 0.7332
+gwudi_sp_all <- spglm(gwudi_class ~ pctagdrainagecat+pctconif2019cat+pctdecid2019cat+pctow2019cat+pcturbhi2019cat+wetindexcat+elevcat+hydcat+fe2o3cat+omcat+           
+                      pctwatercat+sedcat+pctcarbresidcat+wtdepcat+permcat+bficat+conncat+sandcat+claycat+rckdepcat+hydrlcondcat+precip9120cat+tmean9120cat,
+                      colorado_all,
+                      family = 'binomial', spcov_type = 'exponential')
+summary(gwudi_sp_all)
+
+gwudi_loovc <- loocv(gwudi_sp_all, cv_predict = TRUE)
+calc <- pROC::roc(colorado_all$gwudi_class, gwudi_loovc$cv_predict)
+
+# AUC : 0.703
+gwudi_8 <- spglm(gwudi_class ~ wtdepcat + coli + claycat + bficat + permcat + wetindexcat +  
+                   precip9120cat + hydrlcondcat + conncat + sandcat + rckdepcat + pctconif2019cat + omcat + sedcat, 
                  colorado_all, family='binomial', spcov_type = 'exponential')
-summary(gwudi_6)
+loocv_8 <- loocv(gwudi_8, cv_predict = TRUE)
+calc8 <- pROC::roc(colorado_all$gwudi_class, loocv_8$cv_predict)
+print(calc8$auc)
+
+# AUC : 0.7395
+gwudi_9 <- spglm(gwudi_class ~ wtdepcat + coli + claycat + bficat + permcat + wetindexcat +  
+                   precip9120cat + hydrlcondcat + conncat + sandcat + rckdepcat + elevcat + hydcat, 
+                 colorado_all, family='binomial', spcov_type = 'exponential')
+loocv_9 <- loocv(gwudi_9, cv_predict = TRUE)
+calc9 <- pROC::roc(colorado_all$gwudi_class, loocv_9$cv_predict)
+print(calc9$auc)
+
+# AUC: 0.7444
+gwudi_10 <- spglm(gwudi_class ~ wtdepcat + coli + claycat + bficat + permcat + wetindexcat +  
+                   precip9120cat + hydrlcondcat + conncat + sandcat + rckdepcat + elevcat + hydcat + sedcat, 
+                 colorado_all, family='binomial', spcov_type = 'exponential')
+loocv_10 <- loocv(gwudi_10, cv_predict = TRUE)
+calc10 <- pROC::roc(colorado_all$gwudi_class, loocv_10$cv_predict)
+print(calc10$auc)
+
+
+# random forest ----------------------------------------------------------------
 
 colorado_all <- colorado_all |>
   mutate(gwudi_class = as.factor(gwudi_class))
 
 colomini <- colorado_all |>
   select(gwudi_class, wtdepcat, coli , claycat , bficat , permcat , wetindexcat ,  
-           precip9120cat , hydrlcondcat , conncat , sandcat , rckdepcat,) |>
+         precip9120cat , hydrlcondcat , conncat , sandcat , rckdepcat) |>
   st_drop_geometry()
 
 fr_gwudi <- ranger(gwudi_class ~ ., data = colomini, num.trees = 500, 
                    classification = TRUE,
                    probability = TRUE)
-
-
-ggplot(colorado_all, aes(pcturbhi2019cat,source_class)) +
-  geom_boxplot() +
-  theme_bw()  +
-  coord_flip()
-
-gwudi_7 <- spglm(gwudi_class ~ wtdepcat + claycat + bficat + permcat + 
-                   precip9120cat + pctconif2019cat + pctow2019cat + pcturbhi2019cat, 
-                 colorado_all, family='poisson', spcov_type = 'exponential')
-summary(gwudi_7)
 
 colomini <- colorado_all |>
   select(gwudi_class, wtdepcat, claycat , bficat , permcat , wetindexcat ,  
@@ -630,10 +675,23 @@ colomini <- colorado_all |>
   st_drop_geometry()
 
 random_gwudi <- ranger(gwudi_class ~ ., data = colomini, num.trees = 500, 
-                   classification = TRUE,
-                   probability = TRUE)
+                   classification = TRUE)
 random_gwudi
 
+# calculate distance matrix? 
+
+dist_matrix <- sf::st_distance(colorado_all)
+
+# Convert units object to a plain numeric matrix
+dist_matrix <- units::drop_units(dist_matrix)
+
+gwudi_spatial <- rf_spatial(
+  data = colorado_all,
+  dependent.variable.name = "gwudi_class",
+  predictor.variable.names = c("pctagdrainagecat","pctconif2019cat","pctdecid2019cat","pctow2019cat","pcturbhi2019cat","wetindexcat","elevcat","hydcat","fe2o3cat","omcat",           
+                               "pctwatercat","sedcat","pctcarbresidcat","wtdepcat","permcat","bficat","conncat","sandcat","claycat","rckdepcat","hydrlcondcat","precip9120cat","tmean9120cat"),
+  distance.matrix = dist_matrix
+)
 
 
 
