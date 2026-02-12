@@ -421,7 +421,7 @@ ggplot(all_gu, aes(color = present)) +
 # 
 loc <- "O:/LAB/COR/Geospatial_Library_Resource/Physical/HYDROLOGY/NHDPlusV21/NHDPlusNationalData/NHDPlusV21_National_Seamless_Flattened_Lower48.gdb"
 
-cat <- sf::st_read(dsn = loc, layer = 'Catchment') |>
+cat <- sf::st_read(dsn = loc) |>
   st_transform(5072)
 # 
 # wbd_copy <- wbd |>
@@ -502,19 +502,6 @@ for (i in 1:nrow(colorado)){
   print (i)
   colorado[i,'comid'] <- nhdplusTools::discover_nhdplus_id(colorado[i,c('geometry')])
 }
-#load(system.file("extdata", "sample_nrsa_data.rda", package="StreamCatTools"))
-
-# get particular StreamCat data for all these NRSA sites
-# nrsa_sf$COMID <- as.character(nrsa_sf$COMID)
-# comids <- nrsa_sf$COMID
-# comids <- comids[!is.na(comids)]
-# comids <- comids[c(1:700)]
-# comids <- paste(comids,collapse=',')
-# df <- sc_get_data(metric='pctcrop2006', aoi='ws', comid=comids)
-# 
-# # glimpse(df)
-# df$COMID <- as.integer(df$comid)
-# nrsa_sf <- dplyr::left_join(nrsa_sf, df, by='COMID')
 
 colorado <- colorado |>
   select(-COMID) |>
@@ -641,15 +628,16 @@ print(calc8$auc)
 # AUC : 0.7395
 gwudi_9 <- spglm(gwudi_class ~ wtdepcat + coli + claycat + bficat + permcat + wetindexcat +  
                    precip9120cat + hydrlcondcat + conncat + sandcat + rckdepcat + elevcat + hydcat, 
-                 colorado_all, family='binomial', spcov_type = 'exponential')
+                 colorado_all, family='binomial', spcov_type = 'exponential', estmethod = 'ml')
 loocv_9 <- loocv(gwudi_9, cv_predict = TRUE)
 calc9 <- pROC::roc(colorado_all$gwudi_class, loocv_9$cv_predict)
 print(calc9$auc)
 
 # AUC: 0.7444
 gwudi_10 <- spglm(gwudi_class ~ wtdepcat + coli + claycat + bficat + permcat + wetindexcat +  
-                   precip9120cat + hydrlcondcat + conncat + sandcat + rckdepcat + elevcat + hydcat + sedcat, 
-                 colorado_all, family='binomial', spcov_type = 'exponential')
+                   precip9120cat + hydrlcondcat + conncat + sandcat + rckdepcat + elevcat + 
+                    hydcat + sedcat, 
+                 colorado_all, family='binomial', spcov_type = 'exponential', estmethod = 'ml')
 loocv_10 <- loocv(gwudi_10, cv_predict = TRUE)
 calc10 <- pROC::roc(colorado_all$gwudi_class, loocv_10$cv_predict)
 print(calc10$auc)
@@ -670,13 +658,14 @@ fr_gwudi <- ranger(gwudi_class ~ ., data = colomini, num.trees = 500,
                    probability = TRUE)
 
 colomini <- colorado_all |>
-  select(gwudi_class, wtdepcat, claycat , bficat , permcat , wetindexcat ,  
-         precip9120cat , hydrlcondcat , conncat , sandcat , rckdepcat,pctconif2019cat,pctow2019cat,pcturbhi2019cat,) |>
+  select(gwudi_class,wtdepcat, coli, claycat, bficat, permcat, wetindexcat,  
+                    precip9120cat, hydrlcondcat, conncat, sandcat, rckdepcat, elevcat, 
+                    hydcat, sedcat) |>
   st_drop_geometry()
 
-random_gwudi <- ranger(gwudi_class ~ ., data = colomini, num.trees = 500, 
-                   classification = TRUE)
-random_gwudi
+# rf_gu10 <- ranger(gwudi_class ~ ., data = colomini, num.trees = 500, 
+#                    classification = TRUE)
+# rf_gu10
 
 # calculate distance matrix? 
 
@@ -688,8 +677,9 @@ dist_matrix <- units::drop_units(dist_matrix)
 gwudi_spatial <- rf_spatial(
   data = colorado_all,
   dependent.variable.name = "gwudi_class",
-  predictor.variable.names = c("pctagdrainagecat","pctconif2019cat","pctdecid2019cat","pctow2019cat","pcturbhi2019cat","wetindexcat","elevcat","hydcat","fe2o3cat","omcat",           
-                               "pctwatercat","sedcat","pctcarbresidcat","wtdepcat","permcat","bficat","conncat","sandcat","claycat","rckdepcat","hydrlcondcat","precip9120cat","tmean9120cat"),
+  predictor.variable.names = c("wtdepcat", "coli", "claycat", "bficat", "permcat", "wetindexcat",  
+                               "precip9120cat", "hydrlcondcat", "conncat", "sandcat", "rckdepcat", "elevcat", 
+                               "hydcat", "sedcat"),
   distance.matrix = dist_matrix
 )
 
