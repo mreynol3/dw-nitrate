@@ -60,7 +60,7 @@ setwd("C:/Users/mreyno04/OneDrive - Environmental Protection Agency (EPA)/Profil
 # hist(welp$Year, main = paste("Well Data Per Year"),
 #      xlab = "Year")
 
-# RET data
+# RET data =====================================================================
 
 RET <- read_csv("RET-excel.csv")
 
@@ -69,13 +69,43 @@ RET <- RET |>
   filter((WellLongitude < (-100))  & (WellLatitude > 41.9)) |>
   st_as_sf(coords = c("WellLongitude", "WellLatitude"), crs = 4269) 
 
+RET <- RET |>
+  select(SampleId, Name, Date, Year, ResultNumeric, WellCity, WellState, WellZip, WellCounty, geometry) |>
+  rename(AnalyteName = Name,
+         Result = ResultNumeric) |>
+  mutate(Year = as.character(Year))
+
+# RET updated data =============================================================
+
+RET_2025 <- readxl::read_excel('RET_2025.xlsx')
+
+RET_2025 <- RET_2025 |>
+  drop_na(WellLongitude, WellLatidude) |>
+  filter((WellLongitude < (-100))  & (WellLatidude > 41.9)) |>
+  st_as_sf(coords = c("WellLongitude", "WellLatidude"), crs = 4269) 
+
+RET_2025 <- RET_2025 |>
+  select(SampleId, AnalyteName, `Sample Date`, Result, WellCity, WellState, WellZip, WellCounty, geometry) |>
+  rename(Date = `Sample Date`) |>
+  mutate(Year = substr(Date, 1, 4),
+         Date = as.character(Date),
+         Result = as.numeric(Result),
+         WellZip = as.numeric(WellZip)) 
+
+# Bind rows
+
+RET_all <- bind_rows(RET, RET_2025) |>
+  distinct()
+
 # RET_summary <- as.data.frame(table(RET$Year))
 # 
 # RET_summary <- RET_summary |>
 #   rename(year = Var1,
 #          RET_total = Freq)
 
-RET_county <- RET |>
+# county level aggregation =====================================================
+
+RET_county <- RET_all |>
   group_by(WellCounty, Year) |>
   summarize(count = n())
 
@@ -88,10 +118,27 @@ RET_county <- RET_county |>
 
 RET_county <- RET_county |>
   rename_with(~ paste0("RET_", .), -WellCounty)
-  
+
+# zip code level aggregation ===================================================
+
+RET_zip <- RET_all |>
+  group_by(WellZip, Year) |>
+  summarize(count = n())
+
+RET_zip <- RET_zip |>
+  st_drop_geometry() |>
+  pivot_wider(id_cols = WellZip,
+              names_from = Year,
+              values_from = count,
+              values_fill = 0)
+
+RET_zip <- RET_zip |>
+  rename_with(~ paste0("RET_", .), -WellZip)
 
 # ggplot(RET, aes(color = WellCounty)) +
 #   geom_sf(size = 1)
+
+# FRED pending sold data =======================================================
 
 # pending_all <- read.csv("PENDLISOR.csv") # data : https://fred.stlouisfed.org/series/PENLISCOUOR
 # 
@@ -111,29 +158,29 @@ RET_county <- RET_county |>
 #   mutate(estim_sold = pending_total * 0.95, # source : https://www.homelight.com/blog/how-often-do-pending-offers-fall-through/#:~:text=According%20to%20data%20compiled%20by,sales%20fell%20through%20in%202023.
 #          perc = round(RET_total / estim_sold, digits = 4))
 
-# county level pending data, should be 36 counties in Oregon
+# county level pending data ====================================================
 
-rdc_county <- read_csv('RDC_Inventory_Core_Metrics_County_History.csv')
-
-rdc_county <- rdc_county |>
-  separate(col = county_name,
-           into = c("county", "state"),
-           sep = ", ",
-           remove = TRUE) |>
-  filter(state == 'or')
-
-# oregon county fips to names 
-
-fips_to_name <- read_csv('fips_to_name.csv')
-
-fips_to_name <- fips_to_name |>
-  filter(`FIPS State and County Codes` > 40000) |>
-  separate(col = `Geographic area name`,
-           into = c("county", "name"),
-           sep = " County",
-           remove = TRUE) |>
-  rename(county_fips = `FIPS State and County Codes`) |>
-  select(c(county_fips, county))
+# rdc_county <- read_csv('RDC_Inventory_Core_Metrics_County_History.csv')
+# 
+# rdc_county <- rdc_county |>
+#   separate(col = county_name,
+#            into = c("county", "state"),
+#            sep = ", ",
+#            remove = TRUE) |>
+#   filter(state == 'or')
+# 
+# # oregon county fips to names 
+# 
+# fips_to_name <- read_csv('fips_to_name.csv')
+# 
+# fips_to_name <- fips_to_name |>
+#   filter(`FIPS State and County Codes` > 40000) |>
+#   separate(col = `Geographic area name`,
+#            into = c("county", "name"),
+#            sep = " County",
+#            remove = TRUE) |>
+#   rename(county_fips = `FIPS State and County Codes`) |>
+#   select(c(county_fips, county))
 
 # oregon domestic well data, Andrew Murray
 
@@ -335,7 +382,9 @@ county_parcel <- read_csv(file_list) |>
 cws_blocks <- cws_blocks |>
   mutate(state = substr(PWSID, 1, 2)) |>
   filter(state == 'OR')
-  
+
+
+
 
   
 
