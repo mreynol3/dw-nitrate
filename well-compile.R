@@ -13,6 +13,10 @@ library(tidygeocoder)
 library(cdlTools)
 library(janitor)
 library(here)
+library(tidycensus)
+
+# CRITICAL
+options(scipen = 50)
 
 setwd("C:/Users/mreyno04/OneDrive - Environmental Protection Agency (EPA)/Profile/REPOS/dw-nitrate/RET")
 
@@ -95,7 +99,8 @@ RET_2025 <- RET_2025 |>
 # Bind rows
 
 RET_all <- bind_rows(RET, RET_2025) |>
-  distinct()
+  distinct() |>
+  st_transform(crs = 5072)
 
 # RET_summary <- as.data.frame(table(RET$Year))
 # 
@@ -294,7 +299,7 @@ temp.path <- here("Oregon_Temp")
 dir.create(temp.path, showWarnings = FALSE)
 
 # Load CWS Blocks (Download here: https://github.com/USEPA/ORD_SAB_Model/tree/main/Version_History/2_1/Census_Tables)
-cws_blocks <- read_csv(here("Data/Blocks_V_2_1.csv"))
+cws_blocks <- read_csv(here("C:/Users/mreyno04/OneDrive - Environmental Protection Agency (EPA)/Profile/REPOS/dw-nitrate/RET/Extract_Regrid/Extract_Regrid/Data/Blocks_V_2_1.csv"))
 
 # Failed data frame to catch anything that fails
 failed <- data.frame()
@@ -370,7 +375,7 @@ if(nrow(failed)>0){
   write_csv(failed,here("failed.csv"),delim = ",")
 }
 
-# load in all county csvs
+# load in all county csvs ======================================================
 
 file_list <- list.files(path = "C:/Users/mreyno04/OneDrive - Environmental Protection Agency (EPA)/Profile/REPOS/dw-nitrate/RET/Extract_Regrid/Extract_Regrid/Data/County_Tables", 
                         pattern = "\\.csv$", 
@@ -379,20 +384,52 @@ file_list <- list.files(path = "C:/Users/mreyno04/OneDrive - Environmental Prote
 county_parcel <- read_csv(file_list) |>
   filter(lbcs_ownership == '1100' & !is.na(saledate)) 
 
+# Load CWS Blocks (Download here: https://github.com/USEPA/ORD_SAB_Model/tree/main/Version_History/2_1/Census_Tables)
+cws_blocks <- read_csv(here("C:/Users/mreyno04/OneDrive - Environmental Protection Agency (EPA)/Profile/REPOS/dw-nitrate/RET/Extract_Regrid/Extract_Regrid/Data/Blocks_V_2_1.csv"))
+
+# cws blocks == how many buildings are in each census block
 cws_blocks <- cws_blocks |>
   mutate(state = substr(PWSID, 1, 2)) |>
   filter(state == 'OR')
 
+# block housing == how many homes in each block have been sold 
+block_housing <- county_parcel |>
+  filter(lbcs_function_desc == 'Private household' | lbcs_function_desc == 'Residence or accommodation') |>
+  mutate(sale_year = substr(saledate, 1, 4))
+
+# need to divide block housing / cws blocks  @ block level
+
+# census block group information
+census_api_key("686fa0e55795a14927b8004fde67bdb3f7d741ee")
+block_geog <- get_acs(
+  geography = "block group",
+  variables = "B19013_001" ,
+  state = "OR",
+  geometry = TRUE,
+  year = 2020
+)
+
+block_geog <- block_geog |>
+    separate(col = NAME,
+             into = c("group","tract","county", "state"),
+             sep = ",",
+             remove = TRUE) |>
+   st_transform(crs = 5072) |>
+  rename(census_block = GEOID) |>
+  mutate(census_block = as.numeric(census_block))
+
+# summarize data frames by block group first duh girl
+
+RET_all <- RET_all |>
+  rename_with(~ paste0("RET_", .), -geometry)
+
+geoall <- st_join(block_geog, RET_all, join = st_contains) |>
+  drop_na()
 
 
 
-  
-
-
-
-
-
-
+coverall <- block_geog |>
+  left_join(block_housing, by = 'census_block') 
 
 
 
