@@ -25,19 +25,19 @@ setwd("C:/Users/mreyno04/OneDrive - Environmental Protection Agency (EPA)/Profil
 gwma.shp <- st_read("lub-gwma-poly/Lower_Umatilla_GWMA.shp")
 
 gwma.shp <- gwma.shp |>
-  st_transform(crs = 2992)
+  st_transform(crs = 4326)
+
+h2o_iso <- read_excel("LUB-GWMA-Iso-Master-260413.xlsx", sheet = "LUB-GWMA-H2O-isotopes", skip = 1)
+nit_iso <- read_excel("LUB-GWMA-Iso-Master-260413.xlsx", sheet = "LUB-GWMA-Nitrate-Isotopes", skip = 1)
 
 # Nitrate Isotopes =============================================================
 
-gwma <- read_excel('LUB-GWMA-ISO.xlsx', col_names = TRUE, skip =1) 
-n.iso <- read_excel('lubgwma-nitrate-iso.xlsx', col_names = TRUE, skip =1) 
-
-gwma <- gwma |>
+h2o_iso <- h2o_iso |>
   rename(WELLID = `DEQ WELL ID`,
          lat = `DECIMAL LAT`,
          lon = `DECIMAL LONG`)
 
-n.iso <- n.iso |>
+nit_iso <- nit_iso |>
   rename(WELLID = `DEQ WELL ID`)
 
 # gwma_fill <- gwma |>
@@ -51,32 +51,47 @@ n.iso <- n.iso |>
 # geo.gwma <- gwma_fill |>
 #   drop_na(lon)
 
-locs <- gwma |>
+locs <- h2o_iso |>
   select(WELLID, lat, lon) |>
   drop_na(lon)
 
-n.geo <- n.iso |>
+n_geo <- nit_iso |>
   left_join(locs, by = 'WELLID', relationship = "many-to-many") |>
   distinct()
 
-gwma_missing <- n.geo |>
+gwma_missing <- n_geo |>
   filter(is.na(lon))
 
-n.geo <- n.geo |>
+n_geo <- n_geo |>
   drop_na(lat, lon) |>
   st_as_sf(coords = c("lon", "lat"), crs = 4269) |>
-  st_transform(crs = 2992)
+  st_transform(crs = 4326)
 
-n.geo <- n.geo |>
+n_geo <- n_geo |>
   rename(`Nitrate-N (mg/L)` = `Nitrate-N (mg/L)...5`,
          `d-excess` = `d-excess...22`)
 
-n.geo <- n.geo |>
+n_geo <- n_geo |>
   mutate(nitrate = as.double(`Nitrate-N (mg/L)`))
 
-n.geo |>
+n_geo <- n_geo |>
+  mutate(disc_nitrate = factor(case_when(nitrate < 7 ~ '< 7 mg/L', # under 25k
+                                      nitrate >= 7 & nitrate < 10 ~ '7-10 mg/L', # 25k - 50k
+                                      nitrate >= 10 & nitrate < 20 ~ '10-20 mg/L', # 50k - 100k
+                                      nitrate > 20 ~ '> 20 mg/L', # 500k
+                                      TRUE ~ NA),
+                            levels = c('< 7 mg/L', '7-10 mg/L', '10-20 mg/L', '> 20 mg/L'))) |>
+  arrange(disc_nitrate)
+
+# 7, 10, above 20
+
+danger <- rev(RColorBrewer::brewer.pal(4, "Spectral"))
+
+n_geo |>
+  drop_na(nitrate) |>
   ggplot() +
-  geom_sf(aes(color = `δ15N vs Air`)) +
+  geom_sf(aes(color = disc_nitrate), size = 2) +
+  scale_color_manual(values = danger) +
   geom_sf(data = gwma.shp, fill = NA, color = "black", lwd = 0.1)
 
 # print gwma
