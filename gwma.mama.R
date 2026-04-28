@@ -83,17 +83,9 @@ n_geo <- n_geo |>
                             levels = c('< 7 mg/L', '7-10 mg/L', '10-20 mg/L', '> 20 mg/L'))) |>
   arrange(disc_nitrate)
 
-# 7, 10, above 20
+n_geo_2 <- n_geo |>
+  drop_na(nitrate)
 
-danger <- rev(RColorBrewer::brewer.pal(4, "Spectral"))
-
-n_geo |>
-  drop_na(nitrate) |>
-  ggplot() +
-  geom_sf(aes(color = disc_nitrate), size = 2.5) +
-  scale_color_manual(values = danger,
-                     name = 'Measured Nitrate \nConcentration') +
-  geom_sf(data = gwma.shp, fill = NA, color = "black", lwd = 0.1)
 
 # print gwma
 #
@@ -126,35 +118,100 @@ chunks <- split(lub_shp$COMID, ceiling(seq_along(lub_shp$COMID) / 50))
 
 metrics <- as.data.frame(do.call(rbind, lapply(chunks, get_mets)))
 
-# make ha 
-# divide by ha
-
-all_year <- all_year |>
+metrics <- metrics |>
+  #rename(COMID = comid) |>
   rowwise() |>
-  mutate(n_ff_Ws = n_ff_Ws / WSAREAHA,
-         n_lw_Ws = n_lw_Ws / WSAREAHA,
-         n_hw_Ws = n_hw_Ws / WSAREAHA,
-         n_uf_Ws = n_uf_Ws / WSAREAHA,
-         n_cf_Ws = n_cf_Ws / WSAREAHA,
-         n_dep_Ws = n_dep_Ws / WSAREAHA,
-         n_leg_Ws = n_legWs / WSAREAHA,
-         n_ags_Ws = n_ags_Ws / WSAREAHA) 
+  mutate(WSAREAHA = wsareasqkm * 100)
 
+metrics <- metrics |>
+  rowwise() |>
+  mutate(n_ff_ha = n_ff_2017ws / WSAREAHA,
+         n_lw_ha = n_lw_2017ws / WSAREAHA,
+         n_hw_ha = n_hw_2017ws / WSAREAHA,
+         n_uf_ha = n_uf_2017ws / WSAREAHA,
+         n_cf_ha = n_cf_2017ws / WSAREAHA,
+         n_dep_ha = n_dep_2017ws / WSAREAHA,
+         n_leg_ha = n_leg_2017ws / WSAREAHA,
+         n_ags_ha = n_ags_2017ws / WSAREAHA) 
 
+metmini <- metrics |>
+  dplyr::select(COMID, WSAREAHA:n_ags_ha)
 
+lub_all <- lub_shp |>
+  left_join(metmini, by = 'COMID')
 
+n_cols = c('n_ff_ha', 'n_lw_ha', 'n_uf_ha', 'n_hw_ha', 'n_dep_ha', 'n_cf_ha', 'n_leg_ha', 'n_ags_ha')
+n_mod = c('n_ff_ha', 'n_lw_ha', 'n_uf_ha', 'n_hw_ha', 'n_dep_ha', 'n_cf_ha')
 
+lub_all <- lub_all |> 
+  rowwise() |>
+  mutate(largest_source = paste0(n_cols[c_across(all_of(n_cols)) == max(c_across(all_of(n_cols)), na.rm=TRUE)], collapse = '_'),
+         modern_larsource = paste0(n_mod[c_across(all_of(n_mod)) == max(c_across(all_of(n_mod)), na.rm=TRUE)], collapse = '_'))
 
+lub_all <- lub_all |>
+  mutate(modern_larsource = factor(case_when(
+    modern_larsource == 'n_ff_ha' ~ 'Farm Fertilizer',
+    modern_larsource == 'n_cf_ha' ~ 'Crop N-Fixation',
+    modern_larsource == 'n_uf_ha' ~ 'Urban Fertilizer',
+    modern_larsource == 'n_hw_ha' ~ 'Human Waste',
+    modern_larsource == 'n_lw_ha' ~ 'Livestock Manure',
+    modern_larsource == 'n_dep_ha' ~ 'Total Deposition',
+    TRUE ~ 'None'
+  ), levels = c('Farm Fertilizer','Livestock Manure','Crop N-Fixation','Urban Fertilizer','Total Deposition','Human Waste','None')))
 
+lub_all <- lub_all |>
+  rowwise() |>
+  mutate(TN = rowSums(across(c(n_ff_ha:n_ags_ha))))
+  
+  
+colorsN <- c('Farm Fertilizer' = '#A3CC51',
+             'Crop N-Fixation'='#FFD700',
+             'Livestock Manure'='#B26F2C',
+             'Total Deposition'='#6db6ff',
+             'Human Waste'='#E51932',
+             'Urban Fertilizer'='black')
 
+danger <- rev(RColorBrewer::brewer.pal(4, "Spectral"))
 
+# largest source map
+ggplot() +
+  geom_sf(data = lub_all, aes(fill = modern_larsource)) +
+  scale_fill_manual(values = colorsN,
+                    name = "Largest Source") +
+  geom_sf(data = n_geo_2, aes(color = disc_nitrate), size = 2.5) +
+  scale_color_manual(values = danger,
+                     name = 'Measured Well \nNitrate Concentration') +
+  theme_void()
 
+# TN map 
+ggplot() +
+  geom_sf(data = lub_all, aes(fill = TN)) +
+  scale_fill_continuous(palette = c('#84C767', '#E51932'),
+                        name = "Total N Inputs \n(kg/ha/yr)") +
+  geom_sf(data = n_geo_2, aes(color = disc_nitrate), size = 2.5) +
+  scale_color_manual(values = danger,
+                     name = 'Measured Well \nNitrate Concentration') +
+  theme_void()
 
+# map function for indiv sources
+map <- function(var, col_pal, name){
+ggplot() +
+  geom_sf(data = lub_all, aes(fill = var)) +
+  scale_fill_continuous(palette = col_pal,
+                        name = paste(name)) +
+  geom_sf(data = n_geo_2, aes(color = disc_nitrate), size = 2.5) +
+  scale_color_manual(values = danger,
+                     name = 'Measured Well \nNitrate Concentration') +
+  theme_void()
+}
 
+dep_map <- map(lub_all$n_dep_ha, c("#E6F2FF", '#6db6ff', "#0069D1"), 'Total Deposition\n(kg/ha/yr)')
+fert_map <- map(lub_all$n_ff_ha, c("#E2EFC8", "#A3CC51", "#617E25"), 'Farm Fertilizer\n(kg/ha/yr)')
+lw_map <- map(lub_all$n_lw_ha, c("#F1DBC6", "#B26F2C", "#5E3B17"), 'Livestock Waste\n(kg/ha/yr)')
+cf_map <- map(lub_all$n_cf_ha, c("#FFF4B8", "#FFD700", "#A38B00"), 'Crop Fixation\n(kg/ha/yr)')
+hw_map <- map(lub_all$n_hw_ha, c("#FCE8EA", "#E51932", "#931020"), 'Human Waste\n(kg/ha/yr)')
 
-
-
-
+ggsave("n_LARGEST_SOURCE_map.jpeg", width = 12, height = 7, device = 'jpeg', units = 'in', dpi = 600)
 
 
 
