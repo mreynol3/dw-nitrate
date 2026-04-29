@@ -135,6 +135,7 @@ metrics <- metrics |>
          n_ags_ha = n_ags_2017ws / WSAREAHA) 
 
 metmini <- metrics |>
+  rename(COMID = comid) |>
   dplyr::select(COMID, WSAREAHA:n_ags_ha)
 
 lub_all <- lub_shp |>
@@ -163,7 +164,8 @@ lub_all <- lub_all |>
   rowwise() |>
   mutate(TN = rowSums(across(c(n_ff_ha:n_ags_ha))))
   
-  
+# maps / plots =================================================================
+
 colorsN <- c('Farm Fertilizer' = '#A3CC51',
              'Crop N-Fixation'='#FFD700',
              'Livestock Manure'='#B26F2C',
@@ -173,7 +175,15 @@ colorsN <- c('Farm Fertilizer' = '#A3CC51',
 
 danger <- rev(RColorBrewer::brewer.pal(4, "Spectral"))
 
-# largest source map
+# sc get nni ------------------------------------
+lub_com <- paste(lub_all$COMID, collapse = ",")
+all_years <- paste(seq(from = 1987, to = 2017), collapse = ',')
+
+data <- StreamCatTools::sc_get_nni(year = all_years, aoi= 'Ws', comid = lub_com)
+
+plot <- StreamCatTools::sc_plotnni(comid = '24233060')
+
+# largest source map ----------------------------
 ggplot() +
   geom_sf(data = lub_all, aes(fill = modern_larsource)) +
   scale_fill_manual(values = colorsN,
@@ -183,7 +193,7 @@ ggplot() +
                      name = 'Measured Well \nNitrate Concentration') +
   theme_void()
 
-# TN map 
+# TN map ---------------------------------------
 ggplot() +
   geom_sf(data = lub_all, aes(fill = TN)) +
   scale_fill_continuous(palette = c('#84C767', '#E51932'),
@@ -193,7 +203,7 @@ ggplot() +
                      name = 'Measured Well \nNitrate Concentration') +
   theme_void()
 
-# map function for indiv sources
+# map function for indiv sources --------------
 map <- function(var, col_pal, name){
 ggplot() +
   geom_sf(data = lub_all, aes(fill = var)) +
