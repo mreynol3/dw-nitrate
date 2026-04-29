@@ -193,15 +193,40 @@ ggplot() +
                      name = 'Measured Well \nNitrate Concentration') +
   theme_void()
 
+# iso data w/ source ---------------------------
+
+n_geo <- n_geo |>
+  mutate(disc_iso = factor(case_when(`δ15N vs Air` < 5 ~ '< 5', 
+                                         `δ15N vs Air` >= 5 & `δ15N vs Air` < 10 ~ '5-10',
+                                         `δ15N vs Air` >= 10 ~ '> 10', 
+                                         TRUE ~ NA),
+                               levels = c('< 5', '5-10', '> 10'))) |>
+  arrange(disc_iso)
+
+small_danger <- rev(RColorBrewer::brewer.pal(3, "PuOr"))
+
+
+ggplot() +
+  geom_sf(data = lub_all, aes(fill = modern_larsource)) +
+  scale_fill_manual(values = colorsN,
+                    name = "Largest Source") +
+  geom_sf(data = drop_na(n_geo, `δ15N vs Air`), aes(color = disc_iso), size = 2.5) +
+  scale_color_manual(values = small_danger,
+                     name = 'N Isotopic Signature') +
+  theme_void()
+
 # TN map ---------------------------------------
 ggplot() +
   geom_sf(data = lub_all, aes(fill = TN)) +
-  scale_fill_continuous(palette = c('#84C767', '#E51932'),
+  scale_fill_continuous(palette = c('#E4F1E1FF', '#0D585FFF'),
                         name = "Total N Inputs \n(kg/ha/yr)") +
-  geom_sf(data = n_geo_2, aes(color = disc_nitrate), size = 2.5) +
-  scale_color_manual(values = danger,
-                     name = 'Measured Well \nNitrate Concentration') +
+  geom_sf(data = drop_na(n_geo, `δ15N vs Air`), aes(color = disc_iso), size = 2.5) +
+  scale_color_manual(values = c('#89374FFF', '#A3CC51', '#FAAA20'),
+                     name = 'δ15N Value') +
   theme_void()
+
+# '#89374FFF', '#C46F3EFF', '#B79E4BFF'
+# '#89973DFF','#E8B92FFF', '#A45E41FF'
 
 # map function for indiv sources --------------
 map <- function(var, col_pal, name){
@@ -209,9 +234,9 @@ ggplot() +
   geom_sf(data = lub_all, aes(fill = var)) +
   scale_fill_continuous(palette = col_pal,
                         name = paste(name)) +
-  geom_sf(data = n_geo_2, aes(color = disc_nitrate), size = 2.5) +
-  scale_color_manual(values = danger,
-                     name = 'Measured Well \nNitrate Concentration') +
+  geom_sf(data = drop_na(n_geo, `δ15N vs Air`), aes(color = disc_iso), size = 2.5) +
+  scale_color_manual(values = c('#FF7978','#85B2DC','#FFCF7A'),
+                     name = 'N Isotopic Signature') +
   theme_void()
 }
 
@@ -222,7 +247,6 @@ cf_map <- map(lub_all$n_cf_ha, c("#FFF4B8", "#FFD700", "#A38B00"), 'Crop Fixatio
 hw_map <- map(lub_all$n_hw_ha, c("#FCE8EA", "#E51932", "#931020"), 'Human Waste\n(kg/ha/yr)')
 
 ggsave("n_LARGEST_SOURCE_map.jpeg", width = 12, height = 7, device = 'jpeg', units = 'in', dpi = 600)
-
 
 
 
