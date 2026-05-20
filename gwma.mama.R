@@ -109,7 +109,7 @@ lub_shp <- lub_shp |>
 
 get_mets <- function(coms){
   StreamCatTools::sc_get_data(metric = 'n_ff_2017,n_lw_2017,n_hw_2017,n_uf_2017,n_cf_2017,n_dep_2017,n_leg_2017,n_ags_2017',
-                              aoi='ws',
+                              aoi='cat',
                               comid = coms,
                               showAreaSqKm = TRUE)
 }
@@ -125,14 +125,14 @@ metrics <- metrics |>
 
 metrics <- metrics |>
   rowwise() |>
-  mutate(n_ff_ha = n_ff_2017ws / WSAREAHA,
-         n_lw_ha = n_lw_2017ws / WSAREAHA,
-         n_hw_ha = n_hw_2017ws / WSAREAHA,
-         n_uf_ha = n_uf_2017ws / WSAREAHA,
-         n_cf_ha = n_cf_2017ws / WSAREAHA,
-         n_dep_ha = n_dep_2017ws / WSAREAHA,
-         n_leg_ha = n_leg_2017ws / WSAREAHA,
-         n_ags_ha = n_ags_2017ws / WSAREAHA) 
+  mutate(n_ff_ha = n_ff_2017cat / WSAREAHA,
+         n_lw_ha = n_lw_2017cat / WSAREAHA,
+         n_hw_ha = n_hw_2017cat / WSAREAHA,
+         n_uf_ha = n_uf_2017cat / WSAREAHA,
+         n_cf_ha = n_cf_2017cat / WSAREAHA,
+         n_dep_ha = n_dep_2017cat / WSAREAHA,
+         n_leg_ha = n_leg_2017cat / WSAREAHA,
+         n_ags_ha = n_ags_2017cat / WSAREAHA) 
 
 metmini <- metrics |>
   rename(COMID = comid) |>
@@ -162,7 +162,7 @@ lub_all <- lub_all |>
 
 lub_all <- lub_all |>
   rowwise() |>
-  mutate(TN = rowSums(across(c(n_ff_ha:n_ags_ha))))
+  mutate(TN = (n_ff_ha + n_lw_ha + n_uf_ha + n_hw_ha + n_dep_ha + n_cf_ha))
   
 # maps / plots =================================================================
 
@@ -211,17 +211,17 @@ ggplot() +
   scale_fill_manual(values = colorsN,
                     name = "Largest Source") +
   geom_sf(data = drop_na(n_geo, `δ15N vs Air`), aes(color = disc_iso), size = 2.5) +
-  scale_color_manual(values = small_danger,
+  scale_color_manual(values = c('#FF7978','#85B2DC','#FFCF7A'),
                      name = 'N Isotopic Signature') +
   theme_void()
 
 # TN map ---------------------------------------
 ggplot() +
   geom_sf(data = lub_all, aes(fill = TN)) +
-  scale_fill_continuous(palette = c('#E4F1E1FF', '#0D585FFF'),
+  scale_fill_continuous(palette = c('#F2D9FC', '#6A0994'),
                         name = "Total N Inputs \n(kg/ha/yr)") +
   geom_sf(data = drop_na(n_geo, `δ15N vs Air`), aes(color = disc_iso), size = 2.5) +
-  scale_color_manual(values = c('#89374FFF', '#A3CC51', '#FAAA20'),
+  scale_color_manual(values = c('#FF7978','#85B2DC','#FFCF7A'),
                      name = 'δ15N Value') +
   theme_void()
 
@@ -240,13 +240,15 @@ ggplot() +
   theme_void()
 }
 
+expression(paste("TN Input Rate (kg N ", ha^{-1}, yr^{-1},")", sep=""))
+
 dep_map <- map(lub_all$n_dep_ha, c("#E6F2FF", '#6db6ff', "#0069D1"), 'Total Deposition\n(kg/ha/yr)')
 fert_map <- map(lub_all$n_ff_ha, c("#E2EFC8", "#A3CC51", "#617E25"), 'Farm Fertilizer\n(kg/ha/yr)')
 lw_map <- map(lub_all$n_lw_ha, c("#F1DBC6", "#B26F2C", "#5E3B17"), 'Livestock Waste\n(kg/ha/yr)')
 cf_map <- map(lub_all$n_cf_ha, c("#FFF4B8", "#FFD700", "#A38B00"), 'Crop Fixation\n(kg/ha/yr)')
 hw_map <- map(lub_all$n_hw_ha, c("#FCE8EA", "#E51932", "#931020"), 'Human Waste\n(kg/ha/yr)')
 
-ggsave("n_LARGEST_SOURCE_map.jpeg", width = 12, height = 7, device = 'jpeg', units = 'in', dpi = 600)
+ggsave("total_n_map.jpeg", width = 12, height = 7, device = 'jpeg', units = 'in', dpi = 600)
 
 
 # LUB inputs trends ============================================================
