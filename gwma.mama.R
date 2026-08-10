@@ -572,6 +572,74 @@ timenni <- cowplot::plot_grid(
 
 ggsave(filename = "LUB_GWMA_SET.png", width = 10, height = 8, units = "in", dpi = 1200)
 
+# catchment stats for Elizabeth ------------------------------------------------
+
+# 44.537019, -123.298389
+
+start_point <- st_sfc(st_point(c(-123.298389, 44.537019)), crs = 4269)
+start_point <- start_point |>
+  st_transform(crs=5072)
+start_comid <- discover_nhdplus_id(start_point)
+
+sc_plotnni(start_comid, include.nue = FALSE, include.inset = FALSE)
+
+# Lena paper analysis ----------------------------------------------------------
+
+
+#For each location calculate the Pearson Correlation Coefficient r and the r2 for the following:
+
+# •	δ2H–H2O Deuterium Average vs. Nitrate NO3--N (mg/L)  (Column H vs. Column K)
+# •	δ15N–NO3- Nitrate-15 vs. Nitrate NO3--N (mg/L)  (Column L vs. Column K)  
+
+lena_df <- lena_df |>
+  drop_na(`nitrate-15`) |>
+  clean_names()
+
+lena_df |>
+  summarize(
+    r = cor(deut_avg, nitrate_no3, use = "complete.obs"),
+    r_squared = r^2
+  )
+
+cor.test(lena_df$deut_avg, lena_df$nitrate_no3, method = "pearson")
+
+
+lena_df |>
+  group_by(location) |>
+  summarize(
+    r = cor(nitrate_15, nitrate_no3, 
+            method = "pearson",
+            use = "complete.obs"),
+    r_squared = r^2
+  )    
+
+n15.vs.nitrateno3 <- lena_df |>
+  group_by(location) |>
+  do(glance(lm(nitrate_no3 ~ nitrate_15, data = .))) |>
+  select(location, r.squared, adj.r.squared, p.value)
+
+deutavg.vs.nitrateno3 <- lena_df |>
+  group_by(location) |>
+  do(glance(lm(nitrate_no3 ~ deut_avg, data = .))) |>
+  select(location, r.squared, adj.r.squared, p.value)
+
+ggplot(lena_df, aes(nitrate_no3, nitrate_15)) +
+  geom_point(size = .8) +
+  #geom_smooth(method = "lm") +
+  stat_poly_line() +
+  stat_poly_eq(use_label(c("eq", "P", "adj.R2"))) +
+  xlab("Nitrate NO3--N (mg/L)") +
+  xlab("δ15N–NO3- Nitrate-15") + 
+  theme_bw()
+
+write.csv(deutavg.vs.nitrateno3, "deuterium_average.vs.nitrate_no3.csv", row.names = FALSE)
+
+
+
+
+
+
+
 
 
 
