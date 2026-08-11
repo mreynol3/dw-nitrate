@@ -623,18 +623,31 @@ deutavg.vs.nitrateno3 <- lena_df |>
   do(glance(lm(nitrate_no3 ~ deut_avg, data = .))) |>
   select(location, r.squared, adj.r.squared, p.value)
 
-ggplot(lena_df, aes(nitrate_no3, nitrate_15)) +
-  geom_point(size = .8) +
-  #geom_smooth(method = "lm") +
+lena_df |>
+  filter(location == 'DW-5') |>
+  ggplot(aes(nitrate_no3, deut_avg)) +
+  geom_point(size = 3) +
   stat_poly_line() +
   stat_poly_eq(use_label(c("eq", "P", "adj.R2"))) +
-  xlab("Nitrate NO3--N (mg/L)") +
-  xlab("δ15N–NO3- Nitrate-15") + 
+  labs(title ='DW-5') +
   theme_bw()
 
 write.csv(deutavg.vs.nitrateno3, "deuterium_average.vs.nitrate_no3.csv", row.names = FALSE)
 
+nitra_func <- function(location_name){
+  lena_df |>
+    filter(location == paste0(location_name)) |>
+    ggplot(aes(nitrate_no3, nitrate_15)) +
+    geom_point(size = 3) +
+    stat_poly_line() +
+    stat_poly_eq(use_label(c("eq", "P", "adj.R2"))) +
+    labs(title = paste0(location_name)) +
+    theme_bw()
+  
+  ggsave(filename = paste0(location_name, "_n15.png"), width = 6, height = 4, dpi = 300)
+}
 
+lapply(unique(lena_df$location), nitra_func)
 
 
 
