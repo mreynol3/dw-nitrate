@@ -14,6 +14,11 @@ library(janitor)
 library(here)
 library(tidycensus)
 library(readxl)
+library(broom)
+library(ggpmisc)
+library(hydrogeofetch)
+library(nhdplusTools)
+library(StreamCatTools)
 
 # CRITICAL
 options(scipen = 50)
@@ -94,62 +99,64 @@ n_geo_2 <- n_geo |>
 
 # largest source ===============================================================
 
-lub_shp <- st_read("C:/Users/mreyno04/OneDrive - Environmental Protection Agency (EPA)/Profile/REPOS/dw-nitrate/UmatillaIsotope/UmatillaIsotope/lubcomid.shp")
-
-# test <- get_nhdplus(AOI = lub_shp)
-# # Get COMIDs using nhdplusTools package
-# lub_shp$COMID<- NA
-# for (i in 1:nrow(lub_shp)){
-#   print (i)
-#   lub_shp[i,'comid'] <- nhdplusTools::discover_nhdplus_id(lub_shp[i,c('geometry')])
-# }
-
-lub_shp <- lub_shp |>
-  rename(COMID = FEATUREID)
+# lub_shp <- st_read("C:/Users/mreyno04/OneDrive - Environmental Protection Agency (EPA)/Profile/REPOS/dw-nitrate/UmatillaIsotope/UmatillaIsotope/lubcomid.shp")
+# 
+# # test <- get_nhdplus(AOI = lub_shp)
+# # # Get COMIDs using nhdplusTools package
+# # lub_shp$COMID<- NA
+# # for (i in 1:nrow(lub_shp)){
+# #   print (i)
+# #   lub_shp[i,'comid'] <- nhdplusTools::discover_nhdplus_id(lub_shp[i,c('geometry')])
+# # }
+# 
+# lub_shp <- lub_shp |>
+#   rename(COMID = FEATUREID)
 
 get_mets <- function(coms){
-  StreamCatTools::sc_get_data(metric = 'n_ff_2017,n_lw_2017,n_hw_2017,n_uf_2017,n_cf_2017,n_dep_2017,n_leg_2017,n_ags_2017',
+  StreamCatTools::sc_get_data(metric = 'n_ff_1987,n_lw_1987,n_hw_1987,n_uf_1987,n_cf_1987,n_dep_1987,n_leg_1987,n_ags_1987',
                               aoi='cat',
                               comid = coms,
                               showAreaSqKm = TRUE)
 }
 
-chunks <- split(lub_shp$COMID, ceiling(seq_along(lub_shp$COMID) / 50))
+peats_coms <- peats.ws$COMID
+
+chunks <- split(peats_coms, ceiling(seq_along(peats_coms) / 50))
 
 metrics <- as.data.frame(do.call(rbind, lapply(chunks, get_mets)))
 
 metrics <- metrics |>
-  #rename(COMID = comid) |>
+  rename(COMID = comid) |>
   rowwise() |>
   mutate(WSAREAHA = wsareasqkm * 100)
 
 metrics <- metrics |>
   rowwise() |>
-  mutate(n_ff_ha = n_ff_2017cat / WSAREAHA,
-         n_lw_ha = n_lw_2017cat / WSAREAHA,
-         n_hw_ha = n_hw_2017cat / WSAREAHA,
-         n_uf_ha = n_uf_2017cat / WSAREAHA,
-         n_cf_ha = n_cf_2017cat / WSAREAHA,
-         n_dep_ha = n_dep_2017cat / WSAREAHA,
-         n_leg_ha = n_leg_2017cat / WSAREAHA,
-         n_ags_ha = n_ags_2017cat / WSAREAHA) 
+  mutate(n_ff_ha = n_ff_1987cat / WSAREAHA,
+         n_lw_ha = n_lw_1987cat / WSAREAHA,
+         n_hw_ha = n_hw_1987cat / WSAREAHA,
+         n_uf_ha = n_uf_1987cat / WSAREAHA,
+         n_cf_ha = n_cf_1987cat / WSAREAHA,
+        # n_dep_ha = n_dep_1987cat / WSAREAHA,
+         n_leg_ha = n_leg_1987cat / WSAREAHA,
+         n_ags_ha = n_ags_1987cat / WSAREAHA) 
 
-metmini <- metrics |>
-  rename(COMID = comid) |>
-  dplyr::select(COMID, WSAREAHA:n_ags_ha)
+# metmini <- metrics |>
+#   #rename(COMID = comid) |>
+#   dplyr::select(COMID, WSAREAHA:n_ags_ha)
+# 
+# lub_all <- lub_shp |>
+#   left_join(metmini, by = 'COMID')
 
-lub_all <- lub_shp |>
-  left_join(metmini, by = 'COMID')
+n_cols = c('n_ff_ha', 'n_lw_ha', 'n_uf_ha', 'n_hw_ha','n_cf_ha', 'n_leg_ha', 'n_ags_ha')
+n_mod = c('n_ff_ha', 'n_lw_ha', 'n_uf_ha', 'n_hw_ha','n_cf_ha')
 
-n_cols = c('n_ff_ha', 'n_lw_ha', 'n_uf_ha', 'n_hw_ha', 'n_dep_ha', 'n_cf_ha', 'n_leg_ha', 'n_ags_ha')
-n_mod = c('n_ff_ha', 'n_lw_ha', 'n_uf_ha', 'n_hw_ha', 'n_dep_ha', 'n_cf_ha')
-
-lub_all <- lub_all |> 
+metrics <- metrics |> 
   rowwise() |>
   mutate(largest_source = paste0(n_cols[c_across(all_of(n_cols)) == max(c_across(all_of(n_cols)), na.rm=TRUE)], collapse = '_'),
          modern_larsource = paste0(n_mod[c_across(all_of(n_mod)) == max(c_across(all_of(n_mod)), na.rm=TRUE)], collapse = '_'))
 
-lub_all <- lub_all |>
+metrics <- metrics |>
   mutate(modern_larsource = factor(case_when(
     modern_larsource == 'n_ff_ha' ~ 'Farm Fertilizer',
     modern_larsource == 'n_cf_ha' ~ 'Crop N-Fixation',
@@ -160,9 +167,13 @@ lub_all <- lub_all |>
     TRUE ~ 'None'
   ), levels = c('Farm Fertilizer','Livestock Manure','Crop N-Fixation','Urban Fertilizer','Total Deposition','Human Waste','None')))
 
-lub_all <- lub_all |>
+metrics <- metrics |>
   rowwise() |>
-  mutate(TN = (n_ff_ha + n_lw_ha + n_uf_ha + n_hw_ha + n_dep_ha + n_cf_ha))
+  mutate(TN = (n_ff_ha + n_lw_ha + n_uf_ha + n_hw_ha + n_cf_ha)) |>
+  distinct()
+
+peats_1987 <- metrics |>
+  left_join(peats.ws, by = 'COMID')
   
 # maps / plots =================================================================
 
@@ -175,23 +186,136 @@ colorsN <- c('Farm Fertilizer' = '#A3CC51',
 
 danger <- rev(RColorBrewer::brewer.pal(4, "Spectral"))
 
-# sc get nni ------------------------------------
-lub_com <- paste(lub_all$COMID, collapse = ",")
-all_years <- paste(seq(from = 1987, to = 2017), collapse = ',')
+# add spatial data  ------------------------------------
 
-data <- StreamCatTools::sc_get_nni(year = all_years, aoi= 'Ws', comid = lub_com)
+# peats creek by palmer:102500170501
+# peats creek by clifton: 102500170502
 
-plot <- StreamCatTools::sc_plotnni(comid = '24233060')
+# pull comids from huc12 code
+huc_poly <- get_huc(id = 102500170501, type = "huc12")
 
-# largest source map ----------------------------
+# pull NHDPlusV2 flowlines within that polygon
+flowlines <- get_nhdplus(AOI = huc_poly, realization = "flowline")
+
+# extract the vector of COMIDs
+comids <- flowlines$comid
+print(comids)
+
+
+# Pull NHDPlus catchment polygons
+palmer_catchments <- get_nhdplus(comid = comids, realization = "catchment")
+
+palmer_catchments <- palmer_catchments |>
+  rename(COMID = featureid) |>
+  dplyr::select(COMID, geometry)
+
+# clifton_2017 <- metrics |>
+#   left_join(catchments, by = 'COMID') |>
+#   st_as_sf()
+
 ggplot() +
-  geom_sf(data = lub_all, aes(fill = modern_larsource)) +
-  scale_fill_manual(values = colorsN,
-                    name = "Largest Source") +
-  geom_sf(data = n_geo_2, aes(color = disc_nitrate), size = 2.5) +
-  scale_color_manual(values = danger,
-                     name = 'Measured Well \nNitrate Concentration') +
+  geom_sf(data = peats.ws)
+
+peats.ws <- bind_rows(palmer_catchments, clifton_catchments)
+  
+# largest source map ----------------------------
+
+palmer_sf <- st_as_sf(
+  data.frame(name = "Palmer", long = -97.1400, lat = 39.6333),
+  coords = c("long", "lat"),
+  crs = 4326
+)
+
+clifton_sf <- st_as_sf(
+  data.frame(name = "Clifton", long = -97.2806, lat = 39.5681),
+  coords = c("long", "lat"),
+  crs = 4326
+)
+
+# roar sample site point creation
+
+small_catch <- st_as_sf(
+  data.frame(name = "New Small Catchment Sampling Site", long = -97.148567, lat = 39.610044),
+  coords = c("long", "lat"),
+  crs = 4326
+)
+
+new_peats <- st_as_sf(
+  data.frame(name = "New Peats Creek Sampling Site", long = -97.147442, lat = 39.609983),
+  coords = c("long", "lat"),
+  crs = 4326
+)
+
+hist_peats <- st_as_sf(
+  data.frame(name = "Historical Peats Creek Sampling Site", long = -97.137567, lat = 39.631919),
+  coords = c("long", "lat"),
+  crs = 4326
+)
+
+east_wps <- st_as_sf(
+  data.frame(name = "East Well Pump Station", long = -97.153756, lat = 39.631781),
+  coords = c("long", "lat"),
+  crs = 4326
+)
+
+middle_wps <- st_as_sf(
+  data.frame(name = "Middle Well Pump Station", long = -97.156992, lat = 39.631953),
+  coords = c("long", "lat"),
+  crs = 4326
+)
+
+
+west_wps <- st_as_sf(
+  data.frame(name = "West Well Pump Station", long = -97.160906, lat = 39.632022),
+  coords = c("long", "lat"),
+  crs = 4326
+)
+
+roar_sites <- bind_rows(west_wps, middle_wps, east_wps, hist_peats, new_peats, small_catch)
+
+
+# palmer_area <- st_buffer(peats.ws, dist = 3000)
+
+sat_tiles <- get_tiles(
+  x = st_buffer(peats.ws, dist = 1500), # 3 km padding
+  provider = "Esri.WorldImagery",
+  zoom = 12,
+  crop = TRUE
+)
+
+# ggplot() +
+#   layer_spatial(sat_tiles) +
+#   geom_sf(data = palmer_sf, color = "yellow", size = 3.5) +
+#   geom_sf_label(
+#     data = subset(palmer_sf, name == "Palmer"),
+#     aes(label = name),
+#     nudge_y = 0.015,
+#     fontface = "bold"
+#   ) +
+#   coord_sf(expand = FALSE) +
+#   theme_void()
+
+# largest source with watershed overlaid ---------------------------------------
+
+ggplot(roar_sites) +
+  layer_spatial(sat_tiles) +
+  # geom_sf(data = peats_1987, size = 1, aes(fill = modern_larsource, alpha = 0.85)) +
+  # scale_fill_manual(values = colorsN,
+  #                    name = "Largest N Input") +
+  geom_sf(data = clifton_catchments, size = 1, fill = "#FFA756", alpha = 0.7) +
+  geom_sf(data = palmer_catchments, size = 1) +
+  geom_sf(data = palmer_sf, color = "red", size = 3) +
+  geom_text_repel(
+    data = palmer_sf,
+    aes(label = name, geometry = geometry),
+    fontface = "bold",
+    color = 'white',
+    stat = "sf_coordinates") +
+  #labs(title = '1987 N inputs') +
+  # geom_sf(color = "blue", size = 4) +
   theme_void()
+
+ggsave("clifton_catchments.png", width = 5, height = 8, units = 'in', dpi = 600)
 
 # iso data w/ source ---------------------------
 
@@ -251,14 +375,28 @@ hw_map <- map(lub_all$n_hw_ha, c("#FCE8EA", "#E51932", "#931020"), 'Human Waste\
 ggsave("total_n_map.jpeg", width = 12, height = 7, device = 'jpeg', units = 'in', dpi = 600)
 
 
-# LUB inputs trends ============================================================
+# SET inputs trends ============================================================
 
-comid = as.character(lub_shp$COMID)
+# comid = as.character(lub_shp$COMID)
+# peats creek by palmer:102500170501
+# peats creek by clifton: 102500170502
+
+# pull comids from huc12 code
+huc_poly <- get_huc(id = 102500170501, type = "huc12")
+
+# pull NHDPlusV2 flowlines within that polygon
+flowlines <- get_nhdplus(AOI = huc_poly, realization = "flowline")
+
+# extract the vector of COMIDs
+comids <- flowlines$comid
+print(comids)
+
+comid = as.character(comids)
 
 # Get StreamCat data
-test <- sc_get_data(metric = 'n_dep_1990,n_ff_1990,n_uf_1990,n_lw_1990,n_hw_1990,n_ags_1990,n_cf_1990,n_cr_1990,p_cr_1990,p_lw_1990,p_hw_1990,p_uf_1990,p_ff_1990,p_ags_1990,n_dep_1991,n_ff_1991,n_uf_1991,n_lw_1991,n_hw_1991,n_ags_1991,n_cf_1991,n_cr_1991,p_cr_1991,p_lw_1991,p_hw_1991,p_uf_1991,p_ff_1991,p_ags_1991,n_dep_1992,n_ff_1992,n_uf_1992,n_lw_1992,n_hw_1992,n_ags_1992,n_cf_1992,n_cr_1992,p_cr_1992,p_lw_1992,p_hw_1992,p_uf_1992,p_ff_1992,p_ags_1992,n_dep_1993,n_ff_1993,n_uf_1993,n_lw_1993,n_hw_1993,n_ags_1993,n_cf_1993,n_cr_1993,p_cr_1993,p_lw_1993,p_hw_1993,p_uf_1993,p_ff_1993,p_ags_1993,n_dep_1994,n_ff_1994,n_uf_1994,n_lw_1994,n_hw_1994,n_ags_1994,n_cf_1994,n_cr_1994,p_cr_1994,p_lw_1994,p_hw_1994,p_uf_1994,p_ff_1994,p_ags_1994,n_dep_1995,n_ff_1995,n_uf_1995,n_lw_1995,n_hw_1995,n_ags_1995,n_cf_1995,n_cr_1995,p_cr_1995,p_lw_1995,p_hw_1995,p_uf_1995,p_ff_1995,p_ags_1995,n_dep_1996,n_ff_1996,n_uf_1996,n_lw_1996,n_hw_1996,n_ags_1996,n_cf_1996,n_cr_1996,p_cr_1996,p_lw_1996,p_hw_1996,p_uf_1996,p_ff_1996,p_ags_1996,n_dep_1997,n_ff_1997,n_uf_1997,n_lw_1997,n_hw_1997,n_ags_1997,n_cf_1997,n_cr_1997,p_cr_1997,p_lw_1997,p_hw_1997,p_uf_1997,p_ff_1997,p_ags_1997,n_dep_1998,n_ff_1998,n_uf_1998,n_lw_1998,n_hw_1998,n_ags_1998,n_cf_1998,n_cr_1998,p_cr_1998,p_lw_1998,p_hw_1998,p_uf_1998,p_ff_1998,p_ags_1998,n_dep_1999,n_ff_1999,n_uf_1999,n_lw_1999,n_hw_1999,n_ags_1999,n_cf_1999,n_cr_1999,p_cr_1999,p_lw_1999,p_hw_1999,p_uf_1999,p_ff_1999,p_ags_1999,n_dep_2000,n_ff_2000,n_uf_2000,n_lw_2000,n_hw_2000,n_ags_2000,n_cf_2000,n_cr_2000,p_cr_2000,p_lw_2000,p_hw_2000,p_uf_2000,p_ff_2000,p_ags_2000,n_dep_2001,n_ff_2001,n_uf_2001,n_lw_2001,n_hw_2001,n_ags_2001,n_cf_2001,n_cr_2001,p_cr_2001,p_lw_2001,p_hw_2001,p_uf_2001,p_ff_2001,p_ags_2001,n_dep_2002,n_ff_2002,n_uf_2002,n_lw_2002,n_hw_2002,n_ags_2002,n_cf_2002,n_cr_2002,p_cr_2002,p_lw_2002,p_hw_2002,p_uf_2002,p_ff_2002,p_ags_2002,n_dep_2003,n_ff_2003,n_uf_2003,n_lw_2003,n_hw_2003,n_ags_2003,n_cf_2003,n_cr_2003,p_cr_2003,p_lw_2003,p_hw_2003,p_uf_2003,p_ff_2003,p_ags_2003,n_dep_2004,n_ff_2004,n_uf_2004,n_lw_2004,n_hw_2004,n_ags_2004,n_cf_2004,n_cr_2004,p_cr_2004,p_lw_2004,p_hw_2004,p_uf_2004,p_ff_2004,p_ags_2004,n_dep_2005,n_ff_2005,n_uf_2005,n_lw_2005,n_hw_2005,n_ags_2005,n_cf_2005,n_cr_2005,p_cr_2005,p_lw_2005,p_hw_2005,p_uf_2005,p_ff_2005,p_ags_2005,n_dep_2006,n_ff_2006,n_uf_2006,n_lw_2006,n_hw_2006,n_ags_2006,n_cf_2006,n_cr_2006,p_cr_2006,p_lw_2006,p_hw_2006,p_uf_2006,p_ff_2006,p_ags_2006,n_dep_2007,n_ff_2007,n_uf_2007,n_lw_2007,n_hw_2007,n_ags_2007,n_cf_2007,n_cr_2007,p_cr_2007,p_lw_2007,p_hw_2007,p_uf_2007,p_ff_2007,p_ags_2007,n_dep_2008,n_ff_2008,n_uf_2008,n_lw_2008,n_hw_2008,n_ags_2008,n_cf_2008,n_cr_2008,p_cr_2008,p_lw_2008,p_hw_2008,p_uf_2008,p_ff_2008,p_ags_2008,n_dep_2009,n_ff_2009,n_uf_2009,n_lw_2009,n_hw_2009,n_ags_2009,n_cf_2009,n_cr_2009,p_cr_2009,p_lw_2009,p_hw_2009,p_uf_2009,p_ff_2009,p_ags_2009,n_dep_2010,n_ff_2010,n_uf_2010,n_lw_2010,n_hw_2010,n_ags_2010,n_cf_2010,n_cr_2010,p_cr_2010,p_lw_2010,p_hw_2010,p_uf_2010,p_ff_2010,p_ags_2010,n_dep_2011,n_ff_2011,n_uf_2011,n_lw_2011,n_hw_2011,n_ags_2011,n_cf_2011,n_cr_2011,p_cr_2011,p_lw_2011,p_hw_2011,p_uf_2011,p_ff_2011,p_ags_2011,n_dep_2012,n_ff_2012,n_uf_2012,n_lw_2012,n_hw_2012,n_ags_2012,n_cf_2012,n_cr_2012,p_cr_2012,p_lw_2012,p_hw_2012,p_uf_2012,p_ff_2012,p_ags_2012,n_dep_2013,n_ff_2013,n_uf_2013,n_lw_2013,n_hw_2013,n_ags_2013,n_cf_2013,n_cr_2013,p_cr_2013,p_lw_2013,p_hw_2013,p_uf_2013,p_ff_2013,p_ags_2013,n_dep_2014,n_ff_2014,n_uf_2014,n_lw_2014,n_hw_2014,n_ags_2014,n_cf_2014,n_cr_2014,p_cr_2014,p_lw_2014,p_hw_2014,p_uf_2014,p_ff_2014,p_ags_2014,n_dep_2015,n_ff_2015,n_uf_2015,n_lw_2015,n_hw_2015,n_ags_2015,n_cf_2015,n_cr_2015,p_cr_2015,p_lw_2015,p_hw_2015,p_uf_2015,p_ff_2015,p_ags_2015,n_dep_2016,n_ff_2016,n_uf_2016,n_lw_2016,n_hw_2016,n_ags_2016,n_cf_2016,n_cr_2016,p_cr_2016,p_lw_2016,p_hw_2016,p_uf_2016,p_ff_2016,p_ags_2016,n_dep_2017,n_ff_2017,n_uf_2017,n_lw_2017,n_hw_2017,n_ags_2017,n_cf_2017,n_cr_2017,p_cr_2017,p_lw_2017,p_hw_2017,p_uf_2017,p_ff_2017,p_ags_2017',
+nni <- sc_get_data(metric = 'n_dep_1990,n_ff_1990,n_uf_1990,n_lw_1990,n_hw_1990,n_ags_1990,n_cf_1990,n_cr_1990,p_cr_1990,p_lw_1990,p_hw_1990,p_uf_1990,p_ff_1990,p_ags_1990,n_dep_1991,n_ff_1991,n_uf_1991,n_lw_1991,n_hw_1991,n_ags_1991,n_cf_1991,n_cr_1991,p_cr_1991,p_lw_1991,p_hw_1991,p_uf_1991,p_ff_1991,p_ags_1991,n_dep_1992,n_ff_1992,n_uf_1992,n_lw_1992,n_hw_1992,n_ags_1992,n_cf_1992,n_cr_1992,p_cr_1992,p_lw_1992,p_hw_1992,p_uf_1992,p_ff_1992,p_ags_1992,n_dep_1993,n_ff_1993,n_uf_1993,n_lw_1993,n_hw_1993,n_ags_1993,n_cf_1993,n_cr_1993,p_cr_1993,p_lw_1993,p_hw_1993,p_uf_1993,p_ff_1993,p_ags_1993,n_dep_1994,n_ff_1994,n_uf_1994,n_lw_1994,n_hw_1994,n_ags_1994,n_cf_1994,n_cr_1994,p_cr_1994,p_lw_1994,p_hw_1994,p_uf_1994,p_ff_1994,p_ags_1994,n_dep_1995,n_ff_1995,n_uf_1995,n_lw_1995,n_hw_1995,n_ags_1995,n_cf_1995,n_cr_1995,p_cr_1995,p_lw_1995,p_hw_1995,p_uf_1995,p_ff_1995,p_ags_1995,n_dep_1996,n_ff_1996,n_uf_1996,n_lw_1996,n_hw_1996,n_ags_1996,n_cf_1996,n_cr_1996,p_cr_1996,p_lw_1996,p_hw_1996,p_uf_1996,p_ff_1996,p_ags_1996,n_dep_1997,n_ff_1997,n_uf_1997,n_lw_1997,n_hw_1997,n_ags_1997,n_cf_1997,n_cr_1997,p_cr_1997,p_lw_1997,p_hw_1997,p_uf_1997,p_ff_1997,p_ags_1997,n_dep_1998,n_ff_1998,n_uf_1998,n_lw_1998,n_hw_1998,n_ags_1998,n_cf_1998,n_cr_1998,p_cr_1998,p_lw_1998,p_hw_1998,p_uf_1998,p_ff_1998,p_ags_1998,n_dep_1999,n_ff_1999,n_uf_1999,n_lw_1999,n_hw_1999,n_ags_1999,n_cf_1999,n_cr_1999,p_cr_1999,p_lw_1999,p_hw_1999,p_uf_1999,p_ff_1999,p_ags_1999,n_dep_2000,n_ff_2000,n_uf_2000,n_lw_2000,n_hw_2000,n_ags_2000,n_cf_2000,n_cr_2000,p_cr_2000,p_lw_2000,p_hw_2000,p_uf_2000,p_ff_2000,p_ags_2000,n_dep_2001,n_ff_2001,n_uf_2001,n_lw_2001,n_hw_2001,n_ags_2001,n_cf_2001,n_cr_2001,p_cr_2001,p_lw_2001,p_hw_2001,p_uf_2001,p_ff_2001,p_ags_2001,n_dep_2002,n_ff_2002,n_uf_2002,n_lw_2002,n_hw_2002,n_ags_2002,n_cf_2002,n_cr_2002,p_cr_2002,p_lw_2002,p_hw_2002,p_uf_2002,p_ff_2002,p_ags_2002,n_dep_2003,n_ff_2003,n_uf_2003,n_lw_2003,n_hw_2003,n_ags_2003,n_cf_2003,n_cr_2003,p_cr_2003,p_lw_2003,p_hw_2003,p_uf_2003,p_ff_2003,p_ags_2003,n_dep_2004,n_ff_2004,n_uf_2004,n_lw_2004,n_hw_2004,n_ags_2004,n_cf_2004,n_cr_2004,p_cr_2004,p_lw_2004,p_hw_2004,p_uf_2004,p_ff_2004,p_ags_2004,n_dep_2005,n_ff_2005,n_uf_2005,n_lw_2005,n_hw_2005,n_ags_2005,n_cf_2005,n_cr_2005,p_cr_2005,p_lw_2005,p_hw_2005,p_uf_2005,p_ff_2005,p_ags_2005,n_dep_2006,n_ff_2006,n_uf_2006,n_lw_2006,n_hw_2006,n_ags_2006,n_cf_2006,n_cr_2006,p_cr_2006,p_lw_2006,p_hw_2006,p_uf_2006,p_ff_2006,p_ags_2006,n_dep_2007,n_ff_2007,n_uf_2007,n_lw_2007,n_hw_2007,n_ags_2007,n_cf_2007,n_cr_2007,p_cr_2007,p_lw_2007,p_hw_2007,p_uf_2007,p_ff_2007,p_ags_2007,n_dep_2008,n_ff_2008,n_uf_2008,n_lw_2008,n_hw_2008,n_ags_2008,n_cf_2008,n_cr_2008,p_cr_2008,p_lw_2008,p_hw_2008,p_uf_2008,p_ff_2008,p_ags_2008,n_dep_2009,n_ff_2009,n_uf_2009,n_lw_2009,n_hw_2009,n_ags_2009,n_cf_2009,n_cr_2009,p_cr_2009,p_lw_2009,p_hw_2009,p_uf_2009,p_ff_2009,p_ags_2009,n_dep_2010,n_ff_2010,n_uf_2010,n_lw_2010,n_hw_2010,n_ags_2010,n_cf_2010,n_cr_2010,p_cr_2010,p_lw_2010,p_hw_2010,p_uf_2010,p_ff_2010,p_ags_2010,n_dep_2011,n_ff_2011,n_uf_2011,n_lw_2011,n_hw_2011,n_ags_2011,n_cf_2011,n_cr_2011,p_cr_2011,p_lw_2011,p_hw_2011,p_uf_2011,p_ff_2011,p_ags_2011,n_dep_2012,n_ff_2012,n_uf_2012,n_lw_2012,n_hw_2012,n_ags_2012,n_cf_2012,n_cr_2012,p_cr_2012,p_lw_2012,p_hw_2012,p_uf_2012,p_ff_2012,p_ags_2012,n_dep_2013,n_ff_2013,n_uf_2013,n_lw_2013,n_hw_2013,n_ags_2013,n_cf_2013,n_cr_2013,p_cr_2013,p_lw_2013,p_hw_2013,p_uf_2013,p_ff_2013,p_ags_2013,n_dep_2014,n_ff_2014,n_uf_2014,n_lw_2014,n_hw_2014,n_ags_2014,n_cf_2014,n_cr_2014,p_cr_2014,p_lw_2014,p_hw_2014,p_uf_2014,p_ff_2014,p_ags_2014,n_dep_2015,n_ff_2015,n_uf_2015,n_lw_2015,n_hw_2015,n_ags_2015,n_cf_2015,n_cr_2015,p_cr_2015,p_lw_2015,p_hw_2015,p_uf_2015,p_ff_2015,p_ags_2015,n_dep_2016,n_ff_2016,n_uf_2016,n_lw_2016,n_hw_2016,n_ags_2016,n_cf_2016,n_cr_2016,p_cr_2016,p_lw_2016,p_hw_2016,p_uf_2016,p_ff_2016,p_ags_2016,n_dep_2017,n_ff_2017,n_uf_2017,n_lw_2017,n_hw_2017,n_ags_2017,n_cf_2017,n_cr_2017,p_cr_2017,p_lw_2017,p_hw_2017,p_uf_2017,p_ff_2017,p_ags_2017',
                    aoi='ws',
-                   comid = '179',
+                   comid = comid,
                    showAreaSqKm = FALSE,
                    showPctFull = FALSE)
 
@@ -570,84 +708,91 @@ timenni <- cowplot::plot_grid(
   rel_heights = c(3,1))
 
 
-ggsave(filename = "LUB_GWMA_SET.png", width = 10, height = 8, units = "in", dpi = 1200)
+ggsave(filename = "palmer_SET.png", width = 10, height = 8, units = "in", dpi = 1200)
 
 # catchment stats for Elizabeth ------------------------------------------------
 
 # 44.537019, -123.298389
-
-start_point <- st_sfc(st_point(c(-123.298389, 44.537019)), crs = 4269)
-start_point <- start_point |>
-  st_transform(crs=5072)
-start_comid <- discover_nhdplus_id(start_point)
-
-sc_plotnni(start_comid, include.nue = FALSE, include.inset = FALSE)
-
-# Lena paper analysis ----------------------------------------------------------
-
-
-#For each location calculate the Pearson Correlation Coefficient r and the r2 for the following:
-
-# •	δ2H–H2O Deuterium Average vs. Nitrate NO3--N (mg/L)  (Column H vs. Column K)
-# •	δ15N–NO3- Nitrate-15 vs. Nitrate NO3--N (mg/L)  (Column L vs. Column K)  
-
-lena_df <- lena_df |>
-  drop_na(`nitrate-15`) |>
-  clean_names()
-
-lena_df |>
-  summarize(
-    r = cor(deut_avg, nitrate_no3, use = "complete.obs"),
-    r_squared = r^2
-  )
-
-cor.test(lena_df$deut_avg, lena_df$nitrate_no3, method = "pearson")
-
-
-lena_df |>
-  group_by(location) |>
-  summarize(
-    r = cor(nitrate_15, nitrate_no3, 
-            method = "pearson",
-            use = "complete.obs"),
-    r_squared = r^2
-  )    
-
-n15.vs.nitrateno3 <- lena_df |>
-  group_by(location) |>
-  do(glance(lm(nitrate_no3 ~ nitrate_15, data = .))) |>
-  select(location, r.squared, adj.r.squared, p.value)
-
-deutavg.vs.nitrateno3 <- lena_df |>
-  group_by(location) |>
-  do(glance(lm(nitrate_no3 ~ deut_avg, data = .))) |>
-  select(location, r.squared, adj.r.squared, p.value)
-
-lena_df |>
-  filter(location == 'DW-5') |>
-  ggplot(aes(nitrate_no3, deut_avg)) +
-  geom_point(size = 3) +
-  stat_poly_line() +
-  stat_poly_eq(use_label(c("eq", "P", "adj.R2"))) +
-  labs(title ='DW-5') +
-  theme_bw()
-
-write.csv(deutavg.vs.nitrateno3, "deuterium_average.vs.nitrate_no3.csv", row.names = FALSE)
-
-nitra_func <- function(location_name){
-  lena_df |>
-    filter(location == paste0(location_name)) |>
-    ggplot(aes(nitrate_no3, nitrate_15)) +
-    geom_point(size = 3) +
-    stat_poly_line() +
-    stat_poly_eq(use_label(c("eq", "P", "adj.R2"))) +
-    labs(title = paste0(location_name)) +
-    theme_bw()
-  
-  ggsave(filename = paste0(location_name, "_n15.png"), width = 6, height = 4, dpi = 300)
-}
-
-lapply(unique(lena_df$location), nitra_func)
+# 
+# start_point <- st_sfc(st_point(c(-123.298389, 44.537019)), crs = 4269)
+# start_point <- start_point |>
+#   st_transform(crs=5072)
+# start_comid <- discover_nhdplus_id(start_point)
+# 
+# sc_plotnni(start_comid, include.nue = FALSE, include.inset = FALSE)
+# 
+# # Lena paper analysis ----------------------------------------------------------
+# 
+# 
+# #For each location calculate the Pearson Correlation Coefficient r and the r2 for the following:
+# 
+# # •	δ2H–H2O Deuterium Average vs. Nitrate NO3--N (mg/L)  (Column H vs. Column K)
+# # •	δ15N–NO3- Nitrate-15 vs. Nitrate NO3--N (mg/L)  (Column L vs. Column K)  
+# 
+# lena_df <- lena_df |>
+#   #drop_na(`nitrate-15`) |>
+#   clean_names()
+# 
+# # lena_df <- lena_df |>
+# #   # Returns rows strictly before January 1st, 2025 
+# #   filter(date < as.Date("2020-08-31"))
+# # 
+# lena_df |>
+#   summarize(
+#     r = cor(deut_avg, nitrate_no3, use = "complete.obs"),
+#     r_squared = r^2
+#   )
+# 
+# cor.test(lena_df$deut_avg, lena_df$nitrate_no3, method = "pearson")
+# 
+# 
+# cors <- lena_df |>
+#   group_by(location) |>
+#   summarize(
+#     r = cor(deut_avg, nitrate_no3, 
+#             method = "pearson",
+#             use = "complete.obs"),
+#     r_squared = r^2
+#   )   
+# 
+# lena_df <- lena_df |>
+#   drop_na(location)
+# 
+# n15.vs.nitrateno3 <- lena_df |>
+#   group_by(location) |>
+#   do(glance(lm(nitrate_no3 ~ nitrate_15, data = .))) |>
+#   select(location, r.squared, adj.r.squared, p.value)
+# 
+# deutavg.vs.nitrateno3_2012_2024 <- lena_df |>
+#   group_by(location) |>
+#   do(glance(lm(nitrate_no3 ~ deut_avg, data = .))) |>
+#   select(location, r.squared, adj.r.squared, p.value)
+# 
+# lena_df |>
+#   filter(location == 'DW-5') |>
+#   ggplot(aes(nitrate_no3, deut_avg)) +
+#   geom_point(size = 3) +
+#   stat_poly_line() +
+#   stat_poly_eq(use_label(c("eq", "P", "adj.R2"))) +
+#   labs(title ='DW-5') +
+#   theme_bw()
+# 
+# write.csv(deutavg.vs.nitrateno3_2012_2024, "detuavg.vs.nitrateno3_2012_2024.csv", row.names = FALSE)
+# 
+# nitra_func <- function(location_name){
+#   lena_df |>
+#     filter(location == paste0(location_name)) |>
+#     ggplot(aes(nitrate_no3, deut_avg)) +
+#     geom_point(size = 3, alpha= 0.7) +
+#     stat_poly_line() +
+#     stat_poly_eq(use_label(c("eq", "P", "adj.R2"))) +
+#     labs(title = paste0(location_name)) +
+#     theme_bw()
+#   
+#   ggsave(filename = paste0(location_name, "_allyears.png"), width = 6, height = 4, dpi = 300)
+# }
+# 
+# lapply(unique(lena_df$location), nitra_func)
 
 
 
