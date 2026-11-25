@@ -113,7 +113,7 @@ n_geo_2 <- n_geo |>
 #   rename(COMID = FEATUREID)
 
 get_mets <- function(coms){
-  StreamCatTools::sc_get_data(metric = 'n_ff_1987,n_lw_1987,n_hw_1987,n_uf_1987,n_cf_1987,n_dep_1987,n_leg_1987,n_ags_1987',
+  StreamCatTools::sc_get_data(metric = 'n_ff_2017,n_lw_2017,n_hw_2017,n_uf_2017,n_cf_2017,n_dep_2017,n_leg_2017,n_ags_2017',
                               aoi='cat',
                               comid = coms,
                               showAreaSqKm = TRUE)
@@ -132,14 +132,14 @@ metrics <- metrics |>
 
 metrics <- metrics |>
   rowwise() |>
-  mutate(n_ff_ha = n_ff_1987cat / WSAREAHA,
-         n_lw_ha = n_lw_1987cat / WSAREAHA,
-         n_hw_ha = n_hw_1987cat / WSAREAHA,
-         n_uf_ha = n_uf_1987cat / WSAREAHA,
-         n_cf_ha = n_cf_1987cat / WSAREAHA,
-        # n_dep_ha = n_dep_1987cat / WSAREAHA,
-         n_leg_ha = n_leg_1987cat / WSAREAHA,
-         n_ags_ha = n_ags_1987cat / WSAREAHA) 
+  mutate(n_ff_ha = n_ff_2017cat / WSAREAHA,
+         n_lw_ha = n_lw_2017cat / WSAREAHA,
+         n_hw_ha = n_hw_2017cat / WSAREAHA,
+         n_uf_ha = n_uf_2017cat / WSAREAHA,
+         n_cf_ha = n_cf_2017cat / WSAREAHA,
+         n_dep_ha = n_dep_2017cat / WSAREAHA,
+         n_leg_ha = n_leg_2017cat / WSAREAHA,
+         n_ags_ha = n_ags_2017cat / WSAREAHA) 
 
 # metmini <- metrics |>
 #   #rename(COMID = comid) |>
@@ -148,8 +148,8 @@ metrics <- metrics |>
 # lub_all <- lub_shp |>
 #   left_join(metmini, by = 'COMID')
 
-n_cols = c('n_ff_ha', 'n_lw_ha', 'n_uf_ha', 'n_hw_ha','n_cf_ha', 'n_leg_ha', 'n_ags_ha')
-n_mod = c('n_ff_ha', 'n_lw_ha', 'n_uf_ha', 'n_hw_ha','n_cf_ha')
+n_cols = c('n_ff_ha', 'n_lw_ha', 'n_uf_ha', 'n_dep_ha','n_hw_ha','n_cf_ha', 'n_leg_ha', 'n_ags_ha')
+n_mod = c('n_ff_ha', 'n_lw_ha', 'n_uf_ha', 'n_dep_ha','n_hw_ha','n_cf_ha')
 
 metrics <- metrics |> 
   rowwise() |>
@@ -169,10 +169,10 @@ metrics <- metrics |>
 
 metrics <- metrics |>
   rowwise() |>
-  mutate(TN = (n_ff_ha + n_lw_ha + n_uf_ha + n_hw_ha + n_cf_ha)) |>
+  mutate(TN = (n_ff_ha + n_lw_ha + n_uf_ha + n_hw_ha + n_cf_ha + n_dep_ha)) |>
   distinct()
 
-peats_1987 <- metrics |>
+peats_2017 <- metrics |>
   left_join(peats.ws, by = 'COMID')
   
 # maps / plots =================================================================
@@ -373,6 +373,16 @@ cf_map <- map(lub_all$n_cf_ha, c("#FFF4B8", "#FFD700", "#A38B00"), 'Crop Fixatio
 hw_map <- map(lub_all$n_hw_ha, c("#FCE8EA", "#E51932", "#931020"), 'Human Waste\n(kg/ha/yr)')
 
 ggsave("total_n_map.jpeg", width = 12, height = 7, device = 'jpeg', units = 'in', dpi = 600)
+
+ggplot() +
+  layer_spatial(sat_tiles) +
+  geom_sf(data = peats_2017, aes(fill = TN), alpha = 0.87) +
+  scale_fill_continuous(palette = c("#A3CC51", "#FFF4B8", "#E51932"),
+                        name = 'Total Nitrogen\n(kg/ha/yr)') +
+  geom_sf(data = palmer_sf, color = "red", size = 3) +
+  theme_void()
+
+ggsave("TN_peats.png", width = 5, height = 8, units = 'in', dpi = 600)
 
 
 # SET inputs trends ============================================================
