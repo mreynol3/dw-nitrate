@@ -89,7 +89,7 @@ RET_2025 <- RET_2025 |>
   st_as_sf(coords = c("WellLongitude", "WellLatidude"), crs = 4269) 
 
 RET_2025 <- RET_2025 |>
-  select(SampleId, AnalyteName, `Sample Date`, Result, WellCity, WellState, WellZip, WellCounty, geometry) |>
+  select(SampleId, AnalyteName, `Sample Date`, Result, WellCity, WellState, WellZip, WellCounty, WellLongitude, WellLatitude) |>
   rename(Date = `Sample Date`) |>
   mutate(Year = substr(Date, 1, 4),
          Date = as.character(Date),
@@ -430,6 +430,27 @@ geoall <- st_join(block_geog, RET_all, join = st_contains) |>
 
 coverall <- block_geog |>
   left_join(block_housing, by = 'census_block') 
+
+# updated RET data as of 11/18/2026 --------------------------------------------
+
+ret_all <- read_excel("excel_RET_data_pulled_20261013.xlsx")
+
+nitrate <- ret_all |>
+  filter(AnalyteName == "Nitrate")
+
+swv <- ret_all |>
+  filter(WellCounty == "Benton" | WellCounty == "Linn" | WellCounty == 'Lane') |>
+  filter(year(`Sample Date`) > 1990)
+
+swv <- swv |>
+  clean_names() |>
+  dplyr::select(oha_well_id, result, sample_type, analysis_date, sample_date, analyte_name, well_city, well_county, well_latidude, well_longitude)
+
+swv_results <- swv |>
+  filter(analyte_name == 'Nitrate') |>
+  dplyr::select(oha_well_id, analyte_name, analysis_date, result) |>
+  pivot_wider(names_from = analyte_name,
+              values_from = result)
 
 
 
